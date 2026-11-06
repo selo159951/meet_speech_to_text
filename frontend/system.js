@@ -98,7 +98,8 @@ Object.assign(I18N.tr, {
   const chip = $("sysBtn");
   function paintChip(st) {
     const dev = st.plan?.device || (st.gpu_available ? "cuda" : "cpu");
-    const g = st.hardware?.gpus?.length ? st.hardware.gpus.reduce((a, b) => (b.vram > a.vram ? b : a)) : null;
+    const gs = (st.hardware?.gpus || []).filter((x) => dev !== "cuda" || x.vendor === "NVIDIA");
+    const g = gs.length ? gs.reduce((a, b) => (b.vram > a.vram ? b : a)) : null;
     chip.title = { cuda: t("dev_cuda"), vulkan: t("dev_vulkan"), cpu: t("dev_cpu") }[dev] + (dev !== "cpu" && g ? " · " + g.name : "");
   }
   // app.js calls showGpu(st) on start and on language change; it forwards here
