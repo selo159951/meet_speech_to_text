@@ -100,9 +100,12 @@ def choose(hw: dict, settings: dict, cuda: tuple[bool, str] | None = None,
         fb = want
     if ok["ct2-cuda"]:
         return plan("ct2", "cuda", compute, "auto_cuda", fb)
-    if ok["whispercpp"]:
+    # Vulkan automatically only on a real graphics card; onboard graphics are usually slower than
+    # the CPU here (the user can still pick whispercpp by hand on the System page).
+    discrete = [g for g in hw.get("gpus", []) if not g.get("integrated")]
+    if ok["whispercpp"] and discrete:
         return plan("whispercpp", "vulkan", "fp16", "auto_vulkan", fb)
-    return plan("ct2", "cpu", "int8", "auto_cpu", fb)
+    return plan("ct2", "cpu", "int8", "auto_cpu_igpu" if ok["whispercpp"] else "auto_cpu", fb)
 
 
 def create(p: dict) -> Engine:

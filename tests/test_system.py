@@ -115,3 +115,27 @@ def test_record_moving_average_and_skips():
     benchmarks.record({"audio": 30, "asr": 1, "diar": 1}, key=k)           # too short
     benchmarks.record({"audio": 600, "asr": 1, "diar": 1}, key=k, resumed=True)  # partial timings
     assert benchmarks.load() == before
+
+
+def test_integrated_graphics_are_flagged_and_not_auto_used():
+    from backend import hardware
+    from backend.engines import choose
+
+    gpus = hardware.build_gpus([
+        {"name": "Intel(R) Arc(TM) Pro Graphics", "vram": 54_760_833_024},   # onboard, shared RAM
+        {"name": "NVIDIA RTX 1000 Ada Generation Laptop GPU", "vram": 6_439_305_216},
+    ])
+    assert [g["integrated"] for g in gpus] == [False, True]  # real card sorted first
+    assert hardware.best_gpu({"gpus": gpus})["vendor"] == "NVIDIA"
+    for name, onboard in [("Intel(R) Arc(TM) A770 Graphics", False), ("Intel(R) Iris(R) Xe Graphics", True),
+                          ("AMD Radeon(TM) 780M", True), ("AMD Radeon RX 7800 XT", False),
+                          ("AMD Radeon(TM) Graphics", True), ("Intel(R) Arc(TM) B580 Graphics", False)]:
+        assert hardware.is_integrated(name, hardware.vendor_of(name)) is onboard, name
+    igpu_only = {"gpus": hardware.build_gpus([{"name": "Intel(R) Iris(R) Xe Graphics", "vram": 8 * hardware.GB}]),
+                 "vulkan": True}
+    plan = choose(igpu_only, {"engine": "auto"}, cuda=(False, ""), wcpp=(True, ""))
+    assert plan["device"] == "cpu" and plan["reason"] == "auto_cpu_igpu"
+    forced = choose(igpu_only, {"engine": "whispercpp"}, cuda=(False, ""), wcpp=(True, ""))
+    assert forced["engine"] == "whispercpp"  # still possible by hand
+    rx = {"gpus": hardware.build_gpus([{"name": "AMD Radeon RX 7600", "vram": 8 * hardware.GB}]), "vulkan": True}
+    assert choose(rx, {"engine": "auto"}, cuda=(False, ""), wcpp=(True, ""))["device"] == "vulkan"

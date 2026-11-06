@@ -7,6 +7,7 @@ Object.assign(I18N.en, {
   v_cpu: "No usable graphics card — it will run on the processor (slower)",
   v_cpu_gpu_unused: "The graphics card cannot be used here — it will run on the processor (slower)",
   details: "Technical details", gpu: "Graphics card", cpu: "Processor", ram: "Memory (RAM)",
+  igpu_shared: "Onboard graphics · uses shared system memory (usually slower than the processor here)",
   engine_model: "Engine and model", no_gpu: "No graphics card found", vram: "{g} GB video memory",
   vram_free: "{g} GB free", cores_n: "{n} logical cores", ram_total: "{g} GB in total", ram_free: "{g} GB free",
   in_use: "In use", engine_label: "Engine", model_label: "Model", device_label: "Runs on", compute_label: "Precision",
@@ -39,6 +40,7 @@ Object.assign(I18N.tr, {
   v_cpu: "Ekran kartı kullanılamıyor, işlemciyle çalışacak (daha yavaş)",
   v_cpu_gpu_unused: "Ekran kartı burada kullanılamıyor, işlemciyle çalışacak (daha yavaş)",
   details: "Teknik ayrıntılar", gpu: "Ekran kartı", cpu: "İşlemci", ram: "Bellek (RAM)",
+  igpu_shared: "Dahili grafik · sistem belleğini paylaşır (burada genelde işlemciden yavaştır)",
   engine_model: "Motor ve model", no_gpu: "Ekran kartı bulunamadı", vram: "{g} GB video belleği",
   vram_free: "{g} GB boş", cores_n: "{n} mantıksal çekirdek", ram_total: "toplam {g} GB", ram_free: "{g} GB boş",
   in_use: "Kullanımda", engine_label: "Motor", model_label: "Model", device_label: "Çalıştığı yer", compute_label: "Hassasiyet",
@@ -140,7 +142,8 @@ Object.assign(I18N.tr, {
     // hardware cards
     const gpuLines = hw.gpus.length
       ? hw.gpus.map((g) => el("div", {}, line(g.name, "strong"),
-          line([g.vram ? t("vram", { g: gb(g.vram) }) : "", g.free ? t("vram_free", { g: gb(g.free) }) : ""].filter(Boolean).join(" · "), "dim")))
+          line(g.integrated ? t("igpu_shared")
+            : [g.vram ? t("vram", { g: gb(g.vram) }) : "", g.free ? t("vram_free", { g: gb(g.free) }) : ""].filter(Boolean).join(" · "), "dim")))
       : [line(t("no_gpu"), "dim")];
     const ram = hw.ram;
     const grid = el("div", { className: "sgrid" },

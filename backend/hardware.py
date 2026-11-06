@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import re
 import threading
 from pathlib import Path
 
@@ -32,6 +33,18 @@ def vendor_of(name: str, vendor_id: str = "") -> str:
     if "intel" in n or "arc" in n.split() or "iris" in n or "uhd" in n or "VEN_8086" in v:
         return "Intel"
     return "other"
+
+
+def is_integrated(name: str, vendor: str) -> bool:
+    """Onboard graphics share system RAM: their "VRAM" is not real video memory and they are
+    usually slower than the CPU for Whisper. Discrete: NVIDIA, Intel Arc A/B-series, AMD RX/Pro."""
+    n = (name or "").lower()
+    if vendor == "Intel":
+        return not re.search(r"arc(\(tm\))?\s*(pro\s*)?[ab]\d{2,3}", n) and "iris xe max" not in n
+    if vendor == "AMD":
+        discrete = re.search(r"\brx\s*\d|radeon\s*pro\s*w|radeon\s*vii|firepro|instinct", n)
+        return not discrete
+    return False
 
 
 def is_real_gpu(name: str) -> bool:
@@ -63,9 +76,10 @@ def build_gpus(adapters: list[dict]) -> list[dict]:
         if key in seen:
             continue
         seen.add(key)
-        out.append({"name": name, "vendor": vendor_of(name, a.get("ven", "")),
-                    "vram": vram, "vram_gb": round(vram / GB, 1)})
-    out.sort(key=lambda g: -g["vram"])
+        vendor = vendor_of(name, a.get("ven", ""))
+        out.append({"name": name, "vendor": vendor, "vram": vram, "vram_gb": round(vram / GB, 1),
+                    "integrated": is_integrated(name, vendor)})
+    out.sort(key=lambda g: (g["integrated"], -g["vram"]))  # real graphics cards first
     return out
 
 
@@ -247,5 +261,6 @@ def refresh_free() -> dict:
 
 
 def best_gpu(hw: dict, vendor: str | None = None) -> dict | None:
+    """Prefers a real graphics card over onboard graphics (whose memory is shared RAM)."""
     gs = [g for g in hw.get("gpus", []) if vendor is None or g["vendor"] == vendor]
-    return max(gs, key=lambda g: g["vram"]) if gs else None
+    return min(gs, key=lambda g: (g.get("integrated", False), -g["vram"])) if gs else None
