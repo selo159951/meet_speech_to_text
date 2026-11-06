@@ -112,6 +112,22 @@ kbd { font:12px ui-monospace, Consolas, monospace; border:1px solid var(--line);
 footer { position:fixed; bottom:0; left:0; right:0; background:var(--card); border-top:1px solid var(--line); padding:12px 24px; display:flex; gap:10px; align-items:center; }
 #clock { font-family:ui-monospace, Consolas, monospace; } #saved { margin-left:auto; opacity:.7; }
 .spkbtns { flex-direction:row; align-self:flex-start; }
+/* ---- people ---- */
+#people .toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; } #people .toolbar h2 { margin:0; }
+.pcard { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin:10px 0; display:flex; flex-direction:column; gap:6px; }
+.prow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; } .pbtns .spacer { flex:1; }
+.pname { font-weight:600; min-width:160px; } .pmeta { font-size:13px; color:var(--muted); }
+.ptag { font-size:12px; padding:1px 8px; border-radius:10px; border:1px solid var(--line); }
+.ptag.warn { color:#b45309; border-color:#f59e0b; } .ptag.ok { color:var(--added); border-color:var(--added); }
+.paddbox { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.perr { color:#dc2626; background:var(--card); border-left:3px solid #dc2626; padding:6px 10px; border-radius:0 6px 6px 0; }
+.rtext { font-size:18px; line-height:1.7; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 18px; margin:12px 0; }
+.rmeter, .rbar { height:10px; background:var(--line); border-radius:5px; overflow:hidden; margin:6px 0; }
+.rfill { height:100%; width:0; background:#16a34a; transition:width .1s; } .rbarfill { height:100%; width:0; background:var(--accent); transition:width .3s; }
+.rlabel { font-weight:600; margin:4px 0; }
+.vbadge { margin-left:6px; font-size:11px; font-weight:600; color:var(--added); border:1px solid var(--added); border-radius:8px; padding:0 5px; }
+.vsuggest { margin-top:3px; align-self:flex-start; border-color:#f59e0b; }
+.spkmore > .popmenu .prow input { width:110px; }
 @media (max-width:640px) { .seg { grid-template-columns:1fr; } .actions { opacity:1; } #q { width:150px; } main { padding:12px 16px; } }
 
 /* ===== SYSTEM PAGE (system.js) ===== */

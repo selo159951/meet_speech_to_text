@@ -153,6 +153,9 @@ def _transcribe_and_finish(job_id, jp, job, samples, duration, parts, device, pa
 
     for k, name in detect_names(segments, speakers).items():
         speakers[str(k)] = name
+    from . import people  # ---- people: saved voices override the guesses (free when nobody is saved)
+
+    voices = people.apply_to_job(samples, segments, speakers)
     timings = {"audio": round(duration, 1), "device": device, "parallel": parallel,
                "decode": round(t_decoded - t_start, 1), "asr": round(asr_secs, 1),
                "diar": round(diar["secs"] + (time.time() - t_ref), 1), "total": round(time.time() - t_start, 1)}
@@ -161,7 +164,7 @@ def _transcribe_and_finish(job_id, jp, job, samples, duration, parts, device, pa
     benchmarks.record(timings, resumed=resume)  # feeds the ETA estimates
     store.update_job(
         job_id, status="done", stage="done", progress=1.0, dprogress=1.0, segments=segments,
-        speakers=speakers, timings=timings,
+        speakers=speakers, timings=timings, **voices,
         # frozen copy of the model output for the "Original" export
         original_segments=[{k: s[k] for k in ("start", "end", "speaker", "text_original")} for s in segments],
     )

@@ -9,7 +9,8 @@
 <body>
 <header><h1 data-i18n="app">Meeting Transcriber</h1><button id="homeBtn" hidden data-i18n="all_recordings"></button>
   <span class="spacer"></span>
-  <select id="langSel" data-i18n-title="language"><option value="tr">TR</option><option value="en">EN</option></select>
+  <button id="peopleBtn" data-i18n="people"></button>
+  <select id="langSel"data-i18n-title="language"><option value="tr">TR</option><option value="en">EN</option></select>
   <button id="aboutBtn" class="icon" data-i18n-title="about_title">ⓘ</button>
   <button id="sysBtn" data-i18n="system">Sistem</button>
 </header>
@@ -46,6 +47,7 @@
 </main>
 
 <main id="system" hidden></main>
+<main id="people" hidden></main>
 
 <main id="view" hidden>
   <div class="toolbar">
@@ -128,5 +130,6 @@
 <script src="i18n.js"></script>
 <script src="app.js"></script>
 <script src="system.js"></script>
+<script src="people.js"></script>
 </body>
 </html>
