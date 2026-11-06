@@ -135,7 +135,8 @@ function watch(id, name) {
     const bits = active
       ? [`${t("stage_transcribing")} ${Math.round(asrP * 100)}%${parts}`, diaP > 0 || j.stage === "diarizing" ? `${t("stage_diarizing")} ${Math.round(diaP * 100)}%` : null]
       : [t("stage_" + j.stage)];
-    $("pstage").textContent = `${bits.filter(Boolean).join("  ·  ")}  (${fmt(secs)} ${t("elapsed")})`;
+    const eta = window.etaText?.(j, secs, overall);
+    $("pstage").textContent = `${bits.filter(Boolean).join("  ·  ")}  (${fmt(secs)} ${t("elapsed")})` + (eta ? `  ·  ${eta}` : "");
     setTimeout(tick, 1000);
   };
   tick();
@@ -238,10 +239,12 @@ function renderSpeakers() {
       del.onclick = async () => { await checkpoint(); delete spkNames[i]; commit(t("speaker_removed")); };
       menu.append(del);
     }
+    window.peopleHooks?.speakerMenu(i, menu); // people.js: "Save to People"
     const more = el("details", { className: "menu spkmore" }, el("summary", { textContent: "⋯", title: t("speaker_menu") }), menu);
     const stats = el("span", { className: "stats", textContent: mine.length ? `${mmss(talk)} · ${Math.round((talk / total) * 100)}% · ${plural(mine.length, "line_1", "lines_n")}` : t("no_lines") });
     const card = el("div", { className: "spkcard " + spkClass(i) + (mine.length ? "" : " unused") },
       el("div", { className: "spkline" }, inp, more), stats);
+    window.peopleHooks?.speakerCard(i, card); // people.js: "%82" badge / "Selim olabilir? ✓"
     box.append(card);
   }
   const add = el("button", { className: "icon", textContent: "+", title: t("add_speaker_title") });
@@ -493,16 +496,11 @@ $("expGo").onclick = async () => {
   toast(msg, false, { label: t("show_folder"), run: () => call("reveal", r.paths[0]) });
 };
 
-/* ================= GPU toggle ================= */
+/* ================= GPU status (chip + System page live in system.js) ================= */
 function showGpu(st) {
   gpuState = st;
-  const cb = $("gpu");
-  cb.disabled = !st.gpu_available;
-  cb.checked = st.gpu_available && st.use_gpu;
-  $("gpuLabel").textContent = st.gpu_available ? (cb.checked ? t("gpu_on") : t("gpu_off")) : t("gpu_na");
-  $("gpuBox").title = st.gpu_available ? t("gpu_title", { g: st.gpu_name || "NVIDIA GPU" }) : t("cpu_title", { e: st.gpu_error || "" });
+  window.onSysStatus?.(st);
 }
-$("gpu").onchange = async (e) => showGpu(await call("set_settings", { use_gpu: e.target.checked }));
 
 /* ================= language & credits ================= */
 function renderCredits() {

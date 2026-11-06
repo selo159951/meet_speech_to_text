@@ -2,7 +2,7 @@
 # Build: .\build_windows.ps1   (CPU build; add -Gpu for the NVIDIA variant)
 from PyInstaller.utils.hooks import collect_all
 
-datas = [("frontend", "frontend"), ("models", "models")]
+datas = [("frontend", "frontend"), ("models", "models"), ("assets", "assets")]
 binaries = []
 hiddenimports = ["backend.bridge", "backend.window", "backend.names"]
 # packages with native DLLs or data files (VAD model, docx template, WebView2 bridge …)
