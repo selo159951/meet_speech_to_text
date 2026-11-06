@@ -156,6 +156,9 @@ def _transcribe_and_finish(job_id, jp, job, samples, duration, parts, device, pa
     timings = {"audio": round(duration, 1), "device": device, "parallel": parallel,
                "decode": round(t_decoded - t_start, 1), "asr": round(asr_secs, 1),
                "diar": round(diar["secs"] + (time.time() - t_ref), 1), "total": round(time.time() - t_start, 1)}
+    from . import benchmarks
+
+    benchmarks.record(timings, resumed=resume)  # feeds the ETA estimates
     store.update_job(
         job_id, status="done", stage="done", progress=1.0, dprogress=1.0, segments=segments,
         speakers=speakers, timings=timings,

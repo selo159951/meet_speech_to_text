@@ -1,45 +1,26 @@
-"""faster-whisper wrapper with optional GPU (user can switch it on/off)."""
+"""Thin facade over the speech engines (see backend/engines).
+
+Keeps the functions pipeline.py and bridge.py use: load_model, transcribe, status,
+get_settings, set_setting, set_use_gpu. Settings live in data_dir/settings.json:
+  engine: auto | ct2-cuda | ct2-cpu | whispercpp     model: large-v3-turbo | medium | small
+"""
 from __future__ import annotations
 
 import json
-import os
-import sys
 import threading
 from pathlib import Path
 from typing import Callable
 
 import numpy as np
 
-from . import store
+from . import engines, hardware, models, store
 from .merge import Word
 
-MODEL_NAME = os.environ.get("MEETTRANSCRIBER_MODEL", "large-v3-turbo")
-_model = None
-_model_device: str | None = None
-_gpu_ok: bool | None = None  # cached probe result
-_gpu_error: str | None = None
+MODEL_NAME = models.DEFAULT
+_engine = None
+_engine_key: tuple | None = None   # what was requested: ((engine, device, compute), model)
+_engine_plan: dict | None = None   # what is really running (device may have fallen back)
 _lock = threading.Lock()
-
-
-def _register_cuda_dlls() -> None:
-    """Make pip-installed nvidia-* DLLs (cuBLAS, cuDNN) loadable on Windows."""
-    if os.name != "nt":
-        return
-    roots = [Path(p) / "nvidia" for p in sys.path if p]
-    if getattr(sys, "_MEIPASS", None):
-        roots.append(Path(sys._MEIPASS) / "nvidia")
-    for root in roots:
-        if not root.is_dir():
-            continue
-        for bin_dir in root.glob("*/bin"):
-            try:
-                os.add_dll_directory(str(bin_dir))
-            except OSError:
-                pass
-            os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
-
-
-_register_cuda_dlls()
 
 
 # ---------- settings ----------
@@ -49,114 +30,81 @@ def _settings_file() -> Path:
 
 def get_settings() -> dict:
     try:
-        return {"use_gpu": True, **json.loads(_settings_file().read_text("utf-8"))}
+        s = json.loads(_settings_file().read_text("utf-8"))
     except (OSError, ValueError):
-        return {"use_gpu": True}
+        s = {}
+    s.setdefault("use_gpu", True)
+    if not s.get("engine"):  # older versions only had the GPU on/off switch
+        s["engine"] = "auto" if s["use_gpu"] else "ct2-cpu"
+    if s.get("model") not in models.MODELS:
+        s["model"] = MODEL_NAME if MODEL_NAME in models.MODELS else "large-v3-turbo"
+    return s
 
 
 def set_setting(key: str, value) -> None:
-    s = get_settings()
+    try:
+        s = json.loads(_settings_file().read_text("utf-8"))
+    except (OSError, ValueError):
+        s = {}
     s[key] = value
     _settings_file().write_text(json.dumps(s), "utf-8")
 
 
 def set_use_gpu(on: bool) -> None:
     set_setting("use_gpu", bool(on))
+    set_setting("engine", "auto" if on else "ct2-cpu")
 
 
-# ---------- model ----------
-def _create(device: str, compute: str):
-    from faster_whisper import WhisperModel
-
-    return WhisperModel(
-        MODEL_NAME, device=device, compute_type=compute,
-        download_root=str(store.data_dir() / "models"),
-    )
+def plan() -> dict:
+    return engines.choose(hardware.info(), get_settings())
 
 
-def _cuda_device_count() -> int:
-    try:
-        import ctranslate2
-
-        return ctranslate2.get_cuda_device_count()
-    except Exception:
-        return 0
+def key() -> str:
+    """Benchmark key of what would run now, e.g. 'ct2/cuda/large-v3-turbo'."""
+    p = _engine_plan or plan()
+    return f"{p['engine']}/{p['device']}/{get_settings()['model']}"
 
 
-def gpu_name() -> str | None:
-    try:
-        import subprocess
-
-        out = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-                             capture_output=True, text=True, timeout=5,
-                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        return out.stdout.strip().splitlines()[0] or None
-    except Exception:
-        return None
-
-
-def gpu_available() -> bool:
-    """True only if a CUDA GPU exists AND the CUDA libraries really work (probed once)."""
-    global _gpu_ok, _gpu_error
-    if _gpu_ok is None:
-        if _cuda_device_count() == 0:
-            _gpu_ok, _gpu_error = False, "No NVIDIA GPU found"
-        else:
-            try:
-                if os.name == "nt":  # cheap check that the CUDA DLLs can be loaded
-                    import ctypes
-
-                    ctypes.WinDLL("cublas64_12.dll")
-                    ctypes.WinDLL("cudnn64_9.dll")
-                _gpu_ok = True
-            except Exception as e:
-                _gpu_ok, _gpu_error = False, f"CUDA libraries missing: {e}"
-    return _gpu_ok
-
-
-def status() -> dict:
-    return {
-        "gpu_available": gpu_available(),
-        "gpu_name": gpu_name() if gpu_available() else None,
-        "gpu_error": _gpu_error,
-        "use_gpu": get_settings()["use_gpu"],
-        "ui_lang": get_settings().get("ui_lang"),
-        "model": MODEL_NAME,
-        "device_in_use": _model_device,
-    }
-
-
-def load_model():
-    """Load (or reload) the model on the device chosen by the user setting."""
-    global _model, _model_device, _gpu_ok, _gpu_error
-    want = "cuda" if (get_settings()["use_gpu"] and gpu_available()) else "cpu"
+# ---------- engine ----------
+def load_model(progress: Callable[[float], None] | None = None):
+    """Create/load the engine chosen by settings + hardware (cached while nothing changes)."""
+    global _engine, _engine_key, _engine_plan
+    p, model = plan(), get_settings()["model"]
+    k = ((p["engine"], p["device"], p["compute"]), model)
     with _lock:
-        if _model is not None and _model_device == want:
-            return _model
-        _model = None
-        if want == "cuda":
-            try:
-                m = _create("cuda", "float16")
-                list(m.transcribe(np.zeros(16000, np.float32), language="en")[0])  # real probe
-                _model, _model_device = m, "cuda"
-            except Exception as e:
-                print("GPU failed, using CPU:", e)
-                _gpu_ok, _gpu_error = False, str(e)
-        if _model is None:
-            _model, _model_device = _create("cpu", "int8"), "cpu"
-    return _model
+        if _engine is not None and _engine_key == k:
+            return _engine
+        eng = engines.create(p)
+        eng.load(model, progress)
+        _engine, _engine_key = eng, k
+        _engine_plan = dict(p, device=eng.device)  # the engine may have fallen back to CPU
+    return _engine
 
 
 def transcribe(samples: np.ndarray, duration: float,
                progress: Callable[[float], None]) -> tuple[list[Word], str]:
-    model = load_model()
-    segs, info = model.transcribe(
-        samples, language=None, word_timestamps=True, vad_filter=True,
-        condition_on_previous_text=False,
-    )
-    words: list[Word] = []
-    for seg in segs:
-        for w in seg.words or []:
-            words.append(Word(w.start, w.end, w.word))
-        progress(min(seg.end / duration, 1.0))
-    return words, info.language
+    return load_model().transcribe(samples, duration, progress)
+
+
+def status() -> dict:
+    hw = hardware.info()
+    p = _engine_plan or plan()
+    s = get_settings()
+    nv = hardware.best_gpu(hw, "NVIDIA")
+    gpu = hardware.best_gpu(hw)
+    return {
+        "gpu_available": p["device"] != "cpu",
+        "gpu_name": gpu["name"] if gpu and p["device"] != "cpu" else None,
+        "gpu_error": getattr(_engine, "error", None),
+        "use_gpu": s["engine"] != "ct2-cpu",
+        "ui_lang": s.get("ui_lang"),
+        "model": s["model"],
+        "device_in_use": _engine.device if _engine else p["device"],
+        "engine": s["engine"],
+        "engine_in_use": p["engine"],
+        "plan": p,
+        "model_downloaded": models.is_downloaded(s["model"]),
+        "any_model_downloaded": bool(models.downloaded()),
+        "has_nvidia": bool(nv),
+        "hardware": hw,
+    }

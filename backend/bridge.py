@@ -13,6 +13,7 @@ from pathlib import Path
 
 from . import asr, export, store
 from .pipeline import run_job
+from .system_api import SystemApi
 
 EXPORT_TYPES = {
     "docx": "Word document (*.docx)",
@@ -45,7 +46,7 @@ def _job(job_id: str) -> dict:
         raise ValueError("job not found") from None
 
 
-class Api:
+class Api(SystemApi):
     """Methods starting with "_" are not exposed to the page."""
 
     def __init__(self, window_getter=None):

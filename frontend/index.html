@@ -11,7 +11,7 @@
   <span class="spacer"></span>
   <select id="langSel" data-i18n-title="language"><option value="tr">TR</option><option value="en">EN</option></select>
   <button id="aboutBtn" class="icon" data-i18n-title="about_title">ⓘ</button>
-  <label id="gpuBox" class="toggle"><input type="checkbox" id="gpu" disabled><span class="knob"></span><span id="gpuLabel">GPU</span></label>
+  <button id="sysBtn" data-i18n="system">Sistem</button>
 </header>
 
 <main id="home">
@@ -44,6 +44,8 @@
   <p id="jobsEmpty" class="hint" hidden></p>
   <p class="credits" id="creditsLine"></p>
 </main>
+
+<main id="system" hidden></main>
 
 <main id="view" hidden>
   <div class="toolbar">
@@ -125,5 +127,6 @@
 </dialog>
 <script src="i18n.js"></script>
 <script src="app.js"></script>
+<script src="system.js"></script>
 </body>
 </html>
