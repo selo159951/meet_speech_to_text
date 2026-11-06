@@ -53,6 +53,7 @@ const I18N = {
     idea: "Idea", developer: "Developed by", and: "and", language: "Language",
     find_replace: "Find & replace", filters: "Filter", filters_n: "Filter ({n})",
     speaker_menu: "More options for this speaker", move_all_to: "Move all lines to:",
+    st_interrupted: "Interrupted", resume: "Resume", part_n: "(part {i}/{n})",
   },
   tr: {
     app: "Toplantı Yazıya Dökücü", all_recordings: "← Tüm kayıtlar",
@@ -107,6 +108,7 @@ const I18N = {
     idea: "Fikir Babası", developer: "Geliştirici", and: "ve", language: "Dil",
     find_replace: "Bul ve değiştir", filters: "Filtre", filters_n: "Filtre ({n})",
     speaker_menu: "Bu konuşmacı için diğer seçenekler", move_all_to: "Tüm satırları şuna taşı:",
+    st_interrupted: "Yarım kaldı", resume: "Devam et", part_n: "(parça {i}/{n})",
   },
 };
 

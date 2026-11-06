@@ -9,7 +9,7 @@ import time
 import uuid
 from pathlib import Path
 
-_lock = threading.Lock()
+_lock = threading.RLock()  # re-entrant: update_job holds it across read + write
 
 
 def data_dir() -> Path:
@@ -73,10 +73,21 @@ def write_transcript(job_id: str, data: dict) -> None:
 
 
 def update_job(job_id: str, **fields) -> dict:
-    data = read_transcript(job_id)
-    data.update(fields)
-    write_transcript(job_id, data)
-    return data
+    with _lock:  # atomic read-modify-write (progress is written from several threads)
+        data = read_transcript(job_id)
+        data.update(fields)
+        write_transcript(job_id, data)
+        return data
+
+
+def mark_interrupted() -> list[str]:
+    """At start-up: jobs that were still running when the app closed can be resumed."""
+    ids = []
+    for j in list_jobs():
+        if j["status"] in ("running", "queued"):
+            update_job(j["id"], status="interrupted", stage="interrupted")
+            ids.append(j["id"])
+    return ids
 
 
 def _fold(s: str) -> str:

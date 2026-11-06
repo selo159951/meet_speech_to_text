@@ -84,6 +84,17 @@ class Api:
                          daemon=True).start()
         return {"id": job_id, "filename": src.name}
 
+    def resume_job(self, job_id: str) -> dict:
+        """Continue a job that was interrupted (app closed while it was running)."""
+        job = _job(job_id)
+        if job["status"] not in ("interrupted", "error"):
+            raise ValueError("this recording is not interrupted")
+        if not (store.job_path(job_id) / "audio.mp3").exists():
+            raise ValueError("the audio of this recording is missing - add the file again")
+        store.update_job(job_id, status="queued", stage="queued", error=None)
+        threading.Thread(target=run_job, args=(job_id, None), kwargs={"resume": True}, daemon=True).start()
+        return {"id": job_id, "filename": job["filename"]}
+
     def pick_and_start(self) -> dict:
         """Native "Open" dialog, then start the chosen file."""
         import webview

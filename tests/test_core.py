@@ -264,3 +264,43 @@ def test_start_job_never_deletes_the_users_file(tmp_path, monkeypatch):
     assert store.read_transcript(r["id"])["status"] == "error"
     with pytest.raises(ValueError):
         bridge.Api().start_job(str(tmp_path / "missing.mp3"))
+
+
+def test_choose_cuts_only_in_pauses():
+    from backend.chunking import choose_cuts
+
+    # someone talks non-stop except short pauses every 20 s; total 12 minutes
+    speech, t = [], 0.0
+    while t < 720:
+        speech.append((t, t + 19.6))  # 0.4 s pause after each 19.6 s of speech
+        t += 20
+    parts = choose_cuts(720.0, speech)
+    assert parts[0][0] == 0 and parts[-1][1] == 720.0
+    for (a, b), (c, _) in zip(parts, parts[1:]):
+        assert b == c                      # parts touch, nothing lost
+        assert 270 <= b - a <= 300         # 4:30 .. 5:00
+        assert any(e <= b <= s2 for (_, e), (s2, _) in zip(speech, speech[1:]))  # cut is inside a pause
+    assert all(b - a <= 300 for a, b in parts)
+
+
+def test_choose_cuts_prefers_longest_pause_and_falls_back_to_quiet():
+    from backend.chunking import choose_cuts
+
+    speech = [(0, 280), (280.3, 290), (292.0, 600)]  # 0.3 s pause at 280, 2 s pause at 290..292
+    parts = choose_cuts(600.0, speech)
+    assert parts[0] == (0.0, 291.0)  # middle of the longest pause in 4:30..5:00
+    # no pause at all -> the quietest moment decides
+    parts = choose_cuts(400.0, [(0, 400)], quietest=lambda a, b: 288.5)
+    assert parts == [(0.0, 288.5), (288.5, 400.0)]
+    assert choose_cuts(200.0, [(0, 200)]) == [(0.0, 200.0)]  # short file: one part
+
+
+def test_mark_interrupted_and_resume_guard():
+    from backend.bridge import Api
+
+    jid = store.create_job("long.m4a")
+    store.update_job(jid, status="running", stage="transcribing")
+    assert store.mark_interrupted() == [jid]
+    assert store.read_transcript(jid)["status"] == "interrupted"
+    with pytest.raises(ValueError):  # no audio.mp3 saved yet -> cannot resume
+        Api(window_getter=lambda: None).resume_job(jid)

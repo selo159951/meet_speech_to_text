@@ -40,7 +40,8 @@ mark { background:var(--hit); color:inherit; border-radius:2px; padding:0 1px; }
 .helptip { margin-top:12px; max-width:440px; }
 header { padding:8px 24px; gap:10px; }
 .badge { font-size:11px; padding:1px 7px; border-radius:10px; background:var(--line); vertical-align:middle; }
-.badge.done { background:var(--s1); } .badge.error { background:var(--s3); } .badge.running, .badge.queued { background:var(--s2); }
+.badge.done { background:var(--s1); } .badge.error { background:var(--s3); } .badge.running, .badge.queued, .badge.interrupted { background:var(--s2); }
+button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
 
 /* GPU switch */
 .toggle { display:inline-flex; align-items:center; gap:8px; cursor:pointer; user-select:none; font-size:14px; }

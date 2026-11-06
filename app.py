@@ -27,6 +27,7 @@ def main():
     except Exception as e:  # missing runtime pieces
         return _fatal(f"The app could not start:\n{e}")
 
+    store.mark_interrupted()  # jobs cut off by closing the app can be resumed
     if sys.platform == "win32":
         install_virtual_hosts()
     api = Api()

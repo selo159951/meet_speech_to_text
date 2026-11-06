@@ -30,13 +30,27 @@ import os
 THREADS = max(1, min(16, (os.cpu_count() or 2) - 2))  # leave 2 cores for the UI/system
 
 
+# How far the 10 s analysis window moves each step. sherpa-onnx's default (0.1) looks at
+# every second 10 times; 0.5 is 4x faster and gave the same turns on real meetings
+# (the sentence-level check in refine_by_sentence catches the rare missed change).
+WINDOW_SHIFT = 0.5
+
+
+def _seg_config(d):
+    import sherpa_onnx as so
+
+    c = so.OfflineSpeakerSegmentationPyannoteModelConfig(model=str(d / SEG_MODEL))
+    c.window_shift_ratio = WINDOW_SHIFT
+    return c
+
+
 def _make(num_clusters: int):
     import sherpa_onnx as so
 
     d = models_dir()
     cfg = so.OfflineSpeakerDiarizationConfig(
         segmentation=so.OfflineSpeakerSegmentationModelConfig(
-            pyannote=so.OfflineSpeakerSegmentationPyannoteModelConfig(model=str(d / SEG_MODEL)),
+            pyannote=_seg_config(d),
             num_threads=THREADS,
         ),
         embedding=so.SpeakerEmbeddingExtractorConfig(model=str(d / EMB_MODEL), num_threads=THREADS),
@@ -106,17 +120,25 @@ def refine_by_sentence(samples: np.ndarray, words, speakers: list[int],
     return out
 
 
-def diarize(samples: np.ndarray, progress: Callable[[float], None]) -> list[Turn]:
+class Cancelled(Exception):
+    pass
+
+
+def diarize(samples: np.ndarray, progress: Callable[[float], None], cancel=None) -> list[Turn]:
     """Returns turns with 0-based speakers ordered by first appearance. Empty if models missing."""
     if not models_available():
         return []
 
     def cb(done, total, *_):
+        if cancel is not None and cancel.is_set():
+            return 1  # non-zero stops sherpa-onnx
         progress(done / max(total, 1))
         return 0
 
     sd = _make(-1)
     result = sd.process(samples, callback=cb).sort_by_start_time()
+    if cancel is not None and cancel.is_set():
+        raise Cancelled()
     if len({r.speaker for r in result}) > MAX_SPEAKERS:
         result = _make(MAX_SPEAKERS).process(samples, callback=cb).sort_by_start_time()
     order: dict[int, int] = {}

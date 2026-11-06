@@ -59,7 +59,7 @@ function jobRow(j, q) {
   };
   const title = el("a", { href: "#", className: "jtitle" }, ...marked(j.filename, j.name_match ? q : ""));
   title.onclick = (e) => { e.preventDefault(); open(); };
-  const status = { done: "st_done", error: "st_error", running: "st_running", queued: "st_queued" }[j.status];
+  const status = { done: "st_done", error: "st_error", running: "st_running", queued: "st_queued", interrupted: "st_interrupted" }[j.status];
   const meta = [new Date(j.created * 1000).toLocaleString(LANG), j.duration ? mmss(j.duration) : null,
     j.language?.toUpperCase(), j.speakers?.length ? j.speakers.map(displayName).join(", ") : null,
     j.lines ? plural(j.lines, "line_1", "lines_n") + (j.edited ? " · " + t("edited_n", { n: j.edited }) : "") : null]
@@ -88,7 +88,13 @@ function jobRow(j, q) {
   };
   const del = el("button", { textContent: t("delete"), className: "small" });
   del.onclick = async () => { if (confirm(t("delete_confirm", { name: j.filename }))) { await call("delete_job", j.id); loadJobs(); } };
-  return el("li", {}, info, el("div", { className: "jbtns" }, ren, del));
+  const btns = el("div", { className: "jbtns" }, ren, del);
+  if (j.status === "interrupted") {
+    const res = el("button", { textContent: t("resume"), className: "small primary" });
+    res.onclick = () => resume(j.id);
+    btns.prepend(res);
+  }
+  return el("li", {}, info, btns);
 }
 $("jq").oninput = () => { clearTimeout(jobsTimer); jobsTimer = setTimeout(loadJobs, 250); };
 for (const id of ["jStatus", "jLang", "jSort"]) $(id).onchange = loadJobs;
@@ -101,21 +107,35 @@ async function browse() {
   try { const r = await call("pick_and_start"); if (!r.cancelled) onJobStarted(r); } catch (e) { onJobError(e.message || e); }
 }
 
+async function resume(id) {
+  try { onJobStarted(await call("resume_job", id)); } catch (e) { onJobError(e.message || e); }
+}
+
+let watching = null;
 function watch(id, name) {
+  watching = id;
   $("progress").hidden = false; $("pname").textContent = name;
   const t0 = Date.now();
   const tick = async () => {
+    if (watching !== id) return; // another file took over the progress box
     let j;
     try { j = await call("get_job", id); } catch { return setTimeout(tick, 2000); }
     const secs = Math.round((Date.now() - t0) / 1000);
-    const pct = Math.round((j.progress || 0) * 100);
+    const asrP = j.progress || 0, diaP = j.dprogress || 0;
     const active = j.stage === "transcribing" || j.stage === "diarizing";
-    $("pfill").style.width = (active ? pct : j.stage === "done" ? 100 : 5) + "%";
+    // transcription and speaker separation can run at the same time; show both
+    const overall = active ? 0.6 * asrP + 0.4 * diaP : j.stage === "done" ? 1 : 0.03;
+    $("pfill").style.width = Math.round(overall * 100) + "%";
     $("pfill").classList.toggle("indeterminate", !active && j.status === "running");
     if (j.status === "error") { $("pstage").textContent = t("error") + ": " + j.error; return loadJobs(); }
     if (j.status === "done") { $("progress").hidden = true; loadJobs(); return openJob(id); }
-    if (j.device) $("pname").textContent = `${name}  ·  ${j.device === "cuda" ? "GPU" : "CPU"}`;
-    $("pstage").textContent = `${t("stage_" + j.stage)}${active ? " " + pct + "%" : ""}  (${fmt(secs)} ${t("elapsed")})`;
+    const dev = { cuda: "NVIDIA GPU", vulkan: "GPU (Vulkan)", cpu: "CPU" }[j.device];
+    $("pname").textContent = dev ? `${name}  ·  ${dev}` : name;
+    const parts = j.parts?.length > 1 ? " " + t("part_n", { i: j.part || 1, n: j.parts.length }) : "";
+    const bits = active
+      ? [`${t("stage_transcribing")} ${Math.round(asrP * 100)}%${parts}`, diaP > 0 || j.stage === "diarizing" ? `${t("stage_diarizing")} ${Math.round(diaP * 100)}%` : null]
+      : [t("stage_" + j.stage)];
+    $("pstage").textContent = `${bits.filter(Boolean).join("  ·  ")}  (${fmt(secs)} ${t("elapsed")})`;
     setTimeout(tick, 1000);
   };
   tick();
