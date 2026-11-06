@@ -1,0 +1,241 @@
+import json
+import os
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from backend import export, store  # noqa: E402
+from backend.merge import Turn, Word, build_segments  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def home(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEETTRANSCRIBER_HOME", str(tmp_path))
+
+
+def W(s, e, t):
+    return Word(s, e, t)
+
+
+def test_split_on_speaker_change():
+    words = [W(0, .5, " Hello"), W(.5, 1, " there"), W(1.1, 1.6, " Hi"), W(1.6, 2, " all")]
+    turns = [Turn(0, 1.05, 0), Turn(1.05, 2, 1)]
+    segs = build_segments(words, turns)
+    assert [(s["speaker"], s["text_original"]) for s in segs] == [(0, "Hello there"), (1, "Hi all")]
+    assert [s["id"] for s in segs] == [0, 1]
+
+
+def test_split_on_long_pause_and_no_turns():
+    words = [W(0, 1, " a"), W(5, 6, " b")]
+    segs = build_segments(words, [])
+    assert len(segs) == 2 and all(s["speaker"] == 0 for s in segs)
+
+
+def test_word_in_gap_goes_to_nearest_turn():
+    segs = build_segments([W(3.0, 3.2, " x")], [Turn(0, 1, 0), Turn(3.5, 5, 1)])
+    assert segs[0]["speaker"] == 1
+
+
+def test_sentences_split_on_punct_and_pause():
+    from backend.merge import sentences
+
+    ws = [W(0, .5, " Bir."), W(.6, 1, " iki"), W(3, 3.5, " üç"), W(3.6, 4, " dört?")]
+    assert sentences(ws) == [(0, 1), (1, 2), (2, 4)]
+
+
+def _seg_words(text_words, t=0.0, dur=0.5):
+    words = []
+    for w in text_words:
+        words.append(W(t, t + dur, w)); t += dur
+    return words
+
+
+def test_split_uses_word_times():
+    words = _seg_words([" Benim", " durumum", " iyi.", " Bakalım", " kaç", " ses?"])
+    seg = build_segments(words, [Turn(0, 10, 2)])[0]
+    text = seg["text_edited"]
+    a = text.index("Bakalım")
+    from backend.merge import split_segment
+
+    parts = split_segment(seg, a + 2, len(text), 1, next_id=9)  # mid-word selection snaps
+    assert [p["text_edited"] for p in parts] == ["Benim durumum iyi.", "Bakalım kaç ses?"]
+    assert [p["speaker"] for p in parts] == [2, 1]
+    assert [p["id"] for p in parts] == [seg["id"], 9]
+    assert parts[1]["start"] == 1.5 and parts[1]["end"] == 3.0
+    assert parts[1]["text_original"] == "Bakalım kaç ses?"
+    assert len(parts[0]["words"]) == 3 and len(parts[1]["words"]) == 3
+
+
+def test_split_edited_text_interpolates():
+    from backend.merge import split_segment
+
+    seg = {"id": 0, "start": 0.0, "end": 10.0, "speaker": 0, "text_original": "aaaa bbbb",
+           "text_edited": "AAAA BBBB", "words": []}
+    parts = split_segment(seg, 0, 4, 1, next_id=1)
+    assert [(p["text_edited"], p["text_original"], p["speaker"]) for p in parts] == \
+        [("AAAA", "aaaa", 1), ("BBBB", "bbbb", 0)]
+    assert parts[0]["end"] == parts[1]["start"]
+
+
+def test_detect_names():
+    from backend.names import detect_names
+
+    segs = [
+        {"speaker": 0, "text_edited": "Merhaba ben Selim."},
+        {"speaker": 1, "text_edited": "Ben de konuşmacı olarak Bahadır ekstra bir şey söylüyorum. Umut sen de bir şey söylesene."},
+        {"speaker": 2, "text_edited": "Benim psikolojim çok bozuk."},
+    ]
+    default = {"0": "Speaker 1", "1": "Speaker 2", "2": "Speaker 3"}
+    assert detect_names(segs, default) == {0: "Selim", 1: "Bahadır", 2: "Umut"}
+    segs2 = [dict(s) for s in segs]
+    segs2[1] = {"speaker": 1, "text_edited": "Ben Bahadır. Umut sen bir şey söylesene."}
+    assert detect_names(segs2, default)[2] == "Umut"
+    # a speaker renamed by the user is never overwritten
+    assert detect_names(segs, {**default, "0": "Ali"}) == {1: "Bahadır", 2: "Umut"}
+    # place names with a suffix are not names; English intro works
+    assert detect_names([{"speaker": 0, "text_edited": "Ben Ankara'da yaşıyorum."},
+                         {"speaker": 1, "text_edited": "Hi, my name is Anna."}], default) == {1: "Anna"}
+
+
+def _job():
+    jid = store.create_job("meet.mp3")
+    segs = build_segments([W(0, 1, " hello"), W(2.5, 3, " world")], [Turn(0, 3, 0)], max_gap=1)
+    store.update_job(jid, status="done", segments=segs, speakers={"0": "Speaker 1"})
+    return jid
+
+
+def test_edits_never_touch_original():
+    jid = _job()
+    store.save_edits(jid, {0: "HELLO!"}, {0: "Ayse"}, {1: 1})
+    d = store.read_transcript(jid)
+    assert d["segments"][0]["text_original"] == "hello"
+    assert d["segments"][0]["text_edited"] == "HELLO!"
+    assert d["segments"][1]["speaker"] == 1
+    assert d["speakers"]["0"] == "Ayse"
+
+
+def test_export_versions_and_formats():
+    jid = _job()
+    store.save_edits(jid, {0: "HELLO!"}, {0: "Ayse"})
+    d = store.read_transcript(jid)
+    assert "HELLO!" in export.render(d, "edited", "txt")
+    assert "HELLO!" not in export.render(d, "original", "txt")
+    assert "Ayse" in export.render(d, "original", "md")
+    srt = export.render(d, "edited", "srt")
+    assert "00:00:00,000 --> 00:00:01,000" in srt
+    assert json.loads(export.render(d, "edited", "json"))["segments"][0]["speaker"] == "Ayse"
+    with pytest.raises(ValueError):
+        export.render(d, "edited", "pdf")
+
+
+def test_replace_transcript_protects_original_and_exports():
+    jid = _job()
+    d = store.read_transcript(jid)
+    d["original_segments"] = [{k: s[k] for k in ("start", "end", "speaker", "text_original")} for s in d["segments"]]
+    store.write_transcript(jid, d)
+    # client: delete line 1, edit line 0 (and try to tamper with the original), add a new line
+    segs = [{"id": 0, "start": 0, "end": 1, "speaker": 0, "text_edited": "hi", "text_original": "HACK"},
+            {"id": 7, "start": 1, "end": 2, "speaker": 1, "text_edited": "new line"}]
+    out = store.replace_transcript(jid, segs, {"0": "Ayse", "1": "Mehmet"})
+    assert [s["text_original"] for s in out["segments"]] == ["hello", ""]
+    assert out["speakers"] == {"0": "Ayse", "1": "Mehmet"}
+    edited = export.render(out, "edited", "txt")
+    assert "new line" in edited and "world" not in edited
+    original = export.render(out, "original", "txt")  # model output, unaffected by deletes
+    assert "hello" in original and "world" in original and "new line" not in original
+    with pytest.raises(ValueError):
+        store.replace_transcript(jid, segs + [segs[0]], {})
+    # undo of a delete: the line comes back with its model text
+    back = store.replace_transcript(jid, segs + [{"id": 1, "start": 2.5, "end": 3, "speaker": 0,
+                                                  "text_edited": "world", "text_original": "world"}], {})
+    assert [s["text_original"] for s in back["segments"]] == ["hello", "", "world"]
+
+
+def test_docx_export():
+    import io
+    from docx import Document
+
+    jid = _job()
+    blob = export.render(store.read_transcript(jid), "edited", "docx")
+    text = "\n".join(p.text for p in Document(io.BytesIO(blob)).paragraphs)
+    assert "hello" in text and "Speaker 1" in text
+
+
+def test_list_search_and_rename():
+    jid = _job()
+    store.save_edits(jid, {0: "Bütçe İstanbul toplantısı"}, {0: "Ayşe"})
+    other = store.create_job("other.mp3")
+    assert {j["id"] for j in store.list_jobs()} == {jid, other}
+    hit = store.list_jobs("istanbul")  # İ/i forgiving
+    assert [j["id"] for j in hit] == [jid]
+    assert hit[0]["matches"][0]["speaker"] == "Ayşe" and hit[0]["matches"][0]["seg"] == 0
+    assert hit[0]["count"] == 1 and not hit[0]["name_match"]
+    by_spk = store.list_jobs("ayşe")  # speaker name
+    assert [j["id"] for j in by_spk] == [jid] and by_spk[0]["speaker_match"] == ["Ayşe"]
+    by_name = store.list_jobs("meet")  # file name, but the word is also in no line
+    assert by_name[0]["name_match"] and by_name[0]["matches"] == []
+    assert store.list_jobs("zzz") == []
+    store.rename_job(jid, "  Pazartesi toplantısı ")
+    assert store.read_transcript(jid)["filename"] == "Pazartesi toplantısı"
+    with pytest.raises(ValueError):
+        store.rename_job(jid, "   ")
+
+
+def test_desktop_save_export(tmp_path, monkeypatch):
+    import sys
+    import types
+
+    from backend import desktop
+
+    jid = _job()
+    calls = []
+
+    class FakeWin:
+        def create_file_dialog(self, kind, **kw):
+            calls.append((kind, kw))
+            return str(tmp_path / "chosen") if kind == "save" else (str(tmp_path),)
+
+    fake = types.SimpleNamespace(windows=[FakeWin()], FileDialog=types.SimpleNamespace(SAVE="save", FOLDER="folder"))
+    monkeypatch.setitem(sys.modules, "webview", fake)
+    api = desktop.Api()
+    r = api.save_export(jid, "edited", "txt")
+    assert r["paths"] == [str(tmp_path / "chosen.txt")] and "hello" in (tmp_path / "chosen.txt").read_text("utf-8")
+    assert calls[0][1]["save_filename"] == "meet.edited.txt"
+    r = api.save_export(jid, "both", "docx")  # both -> folder dialog, two files
+    assert sorted(Path(p).name for p in r["paths"]) == ["meet.edited.docx", "meet.original.docx"]
+    assert api._last_dir() == str(tmp_path)  # remembers the folder
+    FakeWin.create_file_dialog = lambda self, kind, **kw: None
+    assert api.save_export(jid, "edited", "txt") == {"cancelled": True}
+
+
+def test_export_language_for_default_names():
+    jid = _job()  # speaker 0 still has the default label "Speaker 1"
+    d = store.read_transcript(jid)
+    assert "Konuşmacı 1:" in export.render(d, "edited", "txt", "tr")
+    assert "Speaker 1:" in export.render(d, "edited", "txt", "en")
+    store.save_edits(jid, speakers={0: "Ayşe"})
+    assert "Ayşe:" in export.render(store.read_transcript(jid), "edited", "txt", "tr")
+    from backend.names import detect_names  # "Konuşmacı 1" still counts as unnamed
+    assert detect_names([{"speaker": 0, "text_edited": "Ben Selim."}], {"0": "Konuşmacı 1"}) == {0: "Selim"}
+
+
+def test_job_id_traversal_rejected():
+    with pytest.raises(ValueError):
+        store.job_path("../x")
+
+
+def test_api_roundtrip():
+    from fastapi.testclient import TestClient
+    from backend.main import app
+
+    jid = _job()
+    c = TestClient(app)
+    assert c.get(f"/api/jobs/{jid}").json()["filename"] == "meet.mp3"
+    assert c.patch(f"/api/jobs/{jid}", json={"texts": {"0": "fixed"}}).status_code == 200
+    r = c.get(f"/api/jobs/{jid}/export?version=edited&fmt=txt")
+    assert "fixed" in r.text and "attachment" in r.headers["content-disposition"]
+    assert c.get("/api/jobs/doesnotexist").status_code == 404
+    assert c.get(f"/api/jobs/{jid}/export?fmt=exe").status_code == 400

@@ -1,0 +1,16 @@
+# Python / tooling
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Downloaded models (run fetch_models.py)
+models/
+
+# Build output
+build/
+dist/
+
+# Local editor / assistant settings, logs
+.claude/
+*.log

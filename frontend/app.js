@@ -1,0 +1,559 @@
+const $ = (id) => document.getElementById(id);
+const fmt = (s) => {
+  s = Math.floor(s);
+  return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map((n) => String(n).padStart(2, "0")).join(":");
+};
+// forgiving search: i, ı, İ, I all match each other (same length, so offsets stay valid)
+const fold = (s) => s.replace(/[İIı]/g, "i").toLowerCase();
+const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+const plural = (n, one, many) => (n === 1 ? t(one) : t(many, { n }));
+let job = null, stopAt = null, dirty = {}, saveTimer = null, segSpk = {}, spkNames = {};
+let undoStack = [], gpuState = null;
+
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+const json = (method, body) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+/* Wrap every occurrence of q (folded) in <mark>, safely (no innerHTML). */
+function marked(text, q) {
+  const out = [], f = fold(text), fq = fold(q);
+  let i = 0;
+  for (let k = fq ? f.indexOf(fq) : -1; k >= 0; k = f.indexOf(fq, k + fq.length)) {
+    out.push(text.slice(i, k), el("mark", { textContent: text.slice(k, k + fq.length) }));
+    i = k + fq.length;
+  }
+  out.push(text.slice(i));
+  return out;
+}
+
+/* ================= home ================= */
+let jobsTimer = null;
+
+async function loadJobs() {
+  const q = $("jq").value.trim();
+  let list = await api("/api/jobs" + (q ? "?q=" + encodeURIComponent(q) : ""));
+  const langs = [...new Set(list.map((j) => j.language).filter(Boolean))].sort();
+  const lf = $("jLang"), curLang = lf.value;
+  lf.replaceChildren(new Option(t("all_languages"), ""), ...langs.map((l) => new Option(l.toUpperCase(), l)));
+  lf.value = langs.includes(curLang) ? curLang : "";
+  const st = $("jStatus").value, lang = lf.value;
+  list = list.filter((j) => (!st || (st === "running" ? ["running", "queued"].includes(j.status) : j.status === st)) && (!lang || j.language === lang));
+  const sorters = {
+    new: (a, b) => b.created - a.created, old: (a, b) => a.created - b.created,
+    name: (a, b) => a.filename.localeCompare(b.filename, LANG),
+    long: (a, b) => (b.duration || 0) - (a.duration || 0), short: (a, b) => (a.duration || 0) - (b.duration || 0),
+  };
+  list.sort(sorters[$("jSort").value]);
+  $("jobCount").textContent = list.length ? `(${list.length})` : "";
+  $("jobsEmpty").hidden = !!list.length;
+  $("jobsEmpty").textContent = q || st || lang ? t("no_match_rec") : t("no_rec");
+  $("jobs").replaceChildren(...list.map((j) => jobRow(j, q)));
+}
+
+function jobRow(j, q) {
+  const open = (segId) => {
+    if (j.status !== "done") return watch(j.id, j.filename);
+    openJob(j.id).then(() => { if (q && j.matches?.length) { $("q").value = q; refreshSearch(false); jumpToSeg(segId ?? j.matches[0].seg); } });
+  };
+  const title = el("a", { href: "#", className: "jtitle" }, ...marked(j.filename, j.name_match ? q : ""));
+  title.onclick = (e) => { e.preventDefault(); open(); };
+  const status = { done: "st_done", error: "st_error", running: "st_running", queued: "st_queued" }[j.status];
+  const meta = [new Date(j.created * 1000).toLocaleString(LANG), j.duration ? mmss(j.duration) : null,
+    j.language?.toUpperCase(), j.speakers?.length ? j.speakers.map(displayName).join(", ") : null,
+    j.lines ? plural(j.lines, "line_1", "lines_n") + (j.edited ? " · " + t("edited_n", { n: j.edited }) : "") : null]
+    .filter(Boolean).join("  ·  ");
+  const badge = el("span", { className: "badge " + j.status, textContent: status ? t(status) : j.status, title: j.error || "" });
+  const info = el("div", { className: "jinfo" }, el("div", {}, title, " ", badge), el("div", { className: "jmeta", textContent: meta }));
+  if (q) { // where the search term was found
+    const where = [];
+    if (j.name_match) where.push(t("in_name"));
+    if (j.speaker_match?.length) where.push(t("in_speakers", { s: j.speaker_match.map(displayName).join(", ") }));
+    if (j.count) where.push(plural(j.count, "hit_1", "hits_n"));
+    if (where.length) info.append(el("div", { className: "jwhere", textContent: where.join("  ·  ") }));
+    for (const m of j.matches || []) {
+      const a = el("a", { href: "#", className: "jsnip", title: t("open_line") },
+        el("span", { className: "jtime", textContent: fmt(m.start) }), " ",
+        el("b", { textContent: displayName(m.speaker) + ": " }), ...marked(m.text, q));
+      a.onclick = (e) => { e.preventDefault(); open(m.seg); };
+      info.append(a);
+    }
+    if (j.more) info.append(el("div", { className: "jwhere", textContent: t("more_n", { n: j.more }) }));
+  }
+  const ren = el("button", { textContent: t("rename"), className: "small" });
+  ren.onclick = async () => {
+    const name = prompt(t("rename_prompt"), j.filename);
+    if (name && name.trim() && name !== j.filename) { await api(`/api/jobs/${j.id}/rename`, json("POST", { name })); loadJobs(); }
+  };
+  const del = el("button", { textContent: t("delete"), className: "small" });
+  del.onclick = async () => { if (confirm(t("delete_confirm", { name: j.filename }))) { await api("/api/jobs/" + j.id, { method: "DELETE" }); loadJobs(); } };
+  return el("li", {}, info, el("div", { className: "jbtns" }, ren, del));
+}
+$("jq").oninput = () => { clearTimeout(jobsTimer); jobsTimer = setTimeout(loadJobs, 250); };
+for (const id of ["jStatus", "jLang", "jSort"]) $(id).onchange = loadJobs;
+
+async function upload(file) {
+  if (!file) return;
+  $("progress").hidden = false; $("pname").textContent = file.name;
+  $("pstage").textContent = t("uploading"); $("pfill").style.width = "0%";
+  const fd = new FormData(); fd.append("file", file);
+  try {
+    const { id } = await api("/api/jobs", { method: "POST", body: fd });
+    watch(id, file.name);
+  } catch (e) { $("pstage").textContent = t("upload_failed") + e.message; }
+}
+
+function watch(id, name) {
+  $("progress").hidden = false; $("pname").textContent = name;
+  const t0 = Date.now();
+  const tick = async () => {
+    let j;
+    try { j = await api("/api/jobs/" + id); } catch { return setTimeout(tick, 2000); }
+    const secs = Math.round((Date.now() - t0) / 1000);
+    const pct = Math.round((j.progress || 0) * 100);
+    const active = j.stage === "transcribing" || j.stage === "diarizing";
+    $("pfill").style.width = (active ? pct : j.stage === "done" ? 100 : 5) + "%";
+    $("pfill").classList.toggle("indeterminate", !active && j.status === "running");
+    if (j.status === "error") { $("pstage").textContent = t("error") + ": " + j.error; return loadJobs(); }
+    if (j.status === "done") { $("progress").hidden = true; loadJobs(); return openJob(id); }
+    if (j.device) $("pname").textContent = `${name}  ·  ${j.device === "cuda" ? "GPU" : "CPU"}`;
+    $("pstage").textContent = `${t("stage_" + j.stage)}${active ? " " + pct + "%" : ""}  (${fmt(secs)} ${t("elapsed")})`;
+    setTimeout(tick, 1000);
+  };
+  tick();
+}
+
+/* ================= transcript state ================= */
+async function openJob(id) {
+  const j = await api("/api/jobs/" + id);
+  undoStack = []; updateUndo();
+  $("home").hidden = true; $("view").hidden = false; $("player").hidden = false; $("homeBtn").hidden = false;
+  $("title").textContent = j.filename + (j.language ? `  (${j.language})` : "");
+  $("audio").src = `/api/jobs/${id}/audio`;
+  $("q").value = ""; $("fSpk").value = ""; $("fEdited").checked = false; $("fMatch").checked = false;
+  applyJob(j);
+}
+
+function applyJob(j) {
+  job = j; dirty = {}; segSpk = {}; spkNames = { ...j.speakers };
+  for (const s of job.segments) spkNames[s.speaker] ??= `Speaker ${s.speaker + 1}`;
+  renderSpeakers(); renderSegs();
+}
+
+const spkIds = () => Object.keys(spkNames).map(Number).sort((a, b) => a - b);
+const spkClass = (i) => "spk s" + (i % 6);
+/* Default labels are stored as "Speaker N" and shown in the UI language. */
+const displayName = (name) => { const m = /^(?:Speaker|Konuşmacı) (\d+)$/.exec(name || ""); return m ? t("speaker_n", { n: m[1] }) : name; };
+const spkLabel = (i) => displayName(spkNames[i]);
+
+/* Snapshot before any structural change, so it can be undone. */
+async function checkpoint() {
+  await save();
+  undoStack.push(JSON.stringify({ segments: job.segments, speakers: spkNames }));
+  if (undoStack.length > 50) undoStack.shift();
+  updateUndo();
+}
+function updateUndo() { $("undoBtn").disabled = !undoStack.length; }
+
+/* Save the whole transcript (used after add / delete / merge / undo …). */
+async function commit(msg, undoable = true) {
+  $("saved").textContent = t("saving");
+  // text_original/words are sent so an undone delete gets its model text back;
+  // the server ignores them for lines it already has.
+  const segments = job.segments.map(({ id, start, end, speaker, text_edited, text_original, words }) =>
+    ({ id, start, end, speaker, text_edited, text_original: text_original || "", words: words || [] }));
+  const j = await api(`/api/jobs/${job.id}/transcript`, json("PUT", { segments, speakers: spkNames }));
+  $("saved").textContent = t("saved");
+  applyJob(j);
+  if (msg) toast(msg, undoable);
+}
+
+async function undo() {
+  if (!undoStack.length) return;
+  await save();
+  const snap = JSON.parse(undoStack.pop());
+  updateUndo();
+  job.segments = snap.segments; spkNames = snap.speakers;
+  await commit(t("undone"), false);
+}
+
+function toast(msg, withUndo = false, action = null) {
+  const b = $("toastUndo");
+  b.textContent = action ? action.label : t("undo_short");
+  b.onclick = () => { $("toast").hidden = true; action ? action.run() : undo(); };
+  $("toastMsg").textContent = msg; b.hidden = !(withUndo || action); $("toast").hidden = false;
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => ($("toast").hidden = true), withUndo || action ? 7000 : 3500);
+}
+$("undoBtn").onclick = undo;
+
+/* ================= speakers ================= */
+function renderSpeakers() {
+  const box = $("speakers"); box.replaceChildren(t("speakers") + " ");
+  const total = job.segments.reduce((s, x) => s + (x.end - x.start), 0) || 1;
+  for (const i of spkIds()) {
+    const mine = job.segments.filter((s) => s.speaker === i);
+    const talk = mine.reduce((s, x) => s + (x.end - x.start), 0);
+    const inp = el("input", { value: spkLabel(i), title: t("rename_speaker") });
+    inp.onchange = async () => {
+      await checkpoint();
+      spkNames[i] = inp.value.trim() || `Speaker ${i + 1}`;
+      commit(t("renamed_to", { s: spkLabel(i) }));
+    };
+    // "⋯" menu: move all lines to another speaker / remove an unused speaker
+    const menu = el("div", { className: "popmenu" });
+    const others = spkIds().filter((j) => j !== i);
+    if (mine.length && others.length) {
+      menu.append(el("div", { className: "menulabel", textContent: t("move_all_to") }));
+      for (const j of others) {
+        const b = el("button", { className: "small " + spkClass(j), textContent: spkLabel(j) });
+        b.onclick = async () => {
+          if (!confirm(t("move_confirm", { n: mine.length, a: spkLabel(i), b: spkLabel(j) }))) return;
+          await checkpoint();
+          for (const s of mine) s.speaker = j;
+          commit(t("moved_n", { n: mine.length, b: spkLabel(j) }));
+        };
+        menu.append(b);
+      }
+    }
+    if (!mine.length) {
+      const del = el("button", { className: "small", textContent: "✕ " + t("remove_speaker") });
+      del.onclick = async () => { await checkpoint(); delete spkNames[i]; commit(t("speaker_removed")); };
+      menu.append(del);
+    }
+    const more = el("details", { className: "menu spkmore" }, el("summary", { textContent: "⋯", title: t("speaker_menu") }), menu);
+    const stats = el("span", { className: "stats", textContent: mine.length ? `${mmss(talk)} · ${Math.round((talk / total) * 100)}% · ${plural(mine.length, "line_1", "lines_n")}` : t("no_lines") });
+    const card = el("div", { className: "spkcard " + spkClass(i) + (mine.length ? "" : " unused") },
+      el("div", { className: "spkline" }, inp, more), stats);
+    box.append(card);
+  }
+  const add = el("button", { className: "icon", textContent: "+", title: t("add_speaker_title") });
+  add.onclick = async () => {
+    await checkpoint();
+    const n = Math.max(-1, ...spkIds()) + 1; spkNames[n] = `Speaker ${n + 1}`;
+    commit(t("added_speaker", { s: spkLabel(n) }));
+  };
+  const det = el("button", { className: "icon", textContent: "✨", title: t("detect_names") + " - " + t("detect_title") });
+  det.onclick = detectNames;
+  box.append(el("div", { className: "spkbtns" }, add, det));
+  const f = $("fSpk"), cur = f.value;
+  f.replaceChildren(new Option(t("all_speakers"), ""));
+  for (const i of spkIds()) f.add(new Option(spkLabel(i), i));
+  f.value = [...f.options].some((o) => o.value === cur) ? cur : "";
+}
+
+async function detectNames() {
+  await checkpoint();
+  const r = await api(`/api/jobs/${job.id}/detect-names`, { method: "POST" });
+  const found = Object.entries(r.found).map(([k, v]) => `${spkLabel(k) || t("speaker_n", { n: +k + 1 })} → ${v}`);
+  if (!found.length) { undoStack.pop(); updateUndo(); }
+  applyJob(r.job);
+  toast(found.length ? t("names_found", { s: found.join(", ") }) : t("no_names"), !!found.length);
+}
+
+/* ================= lines ================= */
+function renderSegs() {
+  const box = $("segs"); box.replaceChildren();
+  for (const s of job.segments) {
+    const row = el("div", { className: "seg", id: "seg" + s.id });
+    const chip = el("button", { className: "chip", textContent: `${fmt(s.start)} – ${fmt(s.end)}`, title: t("play_part") });
+    chip.onclick = () => playRange(s.start, s.end);
+    const sel = el("select", { className: spkClass(s.speaker) });
+    for (const i of spkIds()) sel.add(new Option(spkLabel(i), i, false, i === s.speaker));
+    sel.onchange = async () => { await checkpoint(); s.speaker = +sel.value; commit(t("line_given", { s: spkLabel(s.speaker) })); };
+    const txt = el("div", { className: "txt", contentEditable: "true", spellcheck: true, textContent: s.text_edited });
+    txt.dataset.placeholder = t("type_here");
+    const isNew = !s.text_original;
+    const rev = el("button", { className: "small", textContent: t("revert"), title: t("revert_title") });
+    const mark = () => {
+      const ch = !isNew && s.text_edited !== s.text_original;
+      row.classList.toggle("edited", ch); row.classList.toggle("added", isNew); rev.hidden = !ch;
+    };
+    txt.oninput = () => { s.text_edited = txt.innerText.replace(/\n+/g, " ").trim(); (dirty.texts ??= {})[s.id] = s.text_edited; mark(); scheduleSave(); refreshSearch(false); };
+    txt.onkeydown = (e) => { if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); playRange(s.start, s.end); } };
+    rev.onclick = () => { s.text_edited = s.text_original; txt.textContent = s.text_original; (dirty.texts ??= {})[s.id] = s.text_edited; mark(); scheduleSave(); };
+    const act = el("div", { className: "actions" }, rev,
+      btn("＋", t("add_line"), () => addLine(s)),
+      btn("⤒", t("merge_up"), () => mergeUp(s)),
+      btn("🗑", t("delete_line"), () => deleteLine(s)));
+    mark();
+    row.append(chip, sel, txt, act); box.append(row);
+  }
+  refreshSearch(false); // re-apply filters and search highlights on the new nodes
+}
+const btn = (label, title, fn) => { const b = el("button", { className: "small icon", textContent: label, title }); b.onclick = fn; return b; };
+
+async function addLine(s) {
+  await checkpoint();
+  const i = job.segments.indexOf(s), next = job.segments[i + 1];
+  const id = Math.max(...job.segments.map((x) => x.id)) + 1;
+  const start = s.end, end = next ? Math.max(start, next.start) : start + 3;
+  job.segments.splice(i + 1, 0, { id, start, end, speaker: s.speaker, text_edited: "", text_original: "" });
+  await commit(t("line_added"), true);
+  $("seg" + id)?.querySelector(".txt").focus();
+}
+
+async function mergeUp(s) {
+  const i = job.segments.indexOf(s);
+  if (i === 0) return toast(t("first_line"));
+  await checkpoint();
+  const prev = job.segments[i - 1];
+  prev.text_edited = [prev.text_edited, s.text_edited].filter(Boolean).join(" ");
+  prev.end = Math.max(prev.end, s.end);
+  job.segments.splice(i, 1);
+  commit(t("merged", { s: spkLabel(prev.speaker) }));
+}
+
+async function deleteLine(s) {
+  await checkpoint();
+  job.segments.splice(job.segments.indexOf(s), 1);
+  commit(t("line_deleted"));
+}
+
+function scheduleSave() { $("saved").textContent = t("saving"); clearTimeout(saveTimer); saveTimer = setTimeout(save, 600); }
+async function save() {
+  clearTimeout(saveTimer);
+  if (!job || (!dirty.texts && !Object.keys(segSpk).length)) return;
+  const body = { texts: dirty.texts || {}, segment_speakers: segSpk };
+  try {
+    await api("/api/jobs/" + job.id, json("PATCH", body));
+    dirty = {}; segSpk = {}; $("saved").textContent = t("saved");
+  } catch (e) { $("saved").textContent = t("save_failed"); }
+}
+
+/* ================= search / filter ================= */
+let matches = [], matchIdx = -1;
+const hl = window.Highlight && CSS.highlights;
+
+function refreshSearch(jump = true) {
+  const q = fold($("q").value.trim());
+  matches = [];
+  if (q) {
+    for (const row of $("segs").children) {
+      const node = row.querySelector(".txt").firstChild;
+      if (!node || node.nodeType !== 3) continue;
+      const text = fold(node.textContent);
+      for (let k = text.indexOf(q); k >= 0; k = text.indexOf(q, k + q.length)) {
+        const r = new Range(); r.setStart(node, k); r.setEnd(node, k + q.length);
+        matches.push({ row, r });
+      }
+    }
+  }
+  applyFilters();
+  matches = matches.filter((m) => !m.row.hidden);
+  if (jump || matchIdx < 0 || matchIdx >= matches.length) matchIdx = matches.length ? 0 : -1;
+  paintMatches(jump);
+}
+
+function paintMatches(scroll) {
+  $("qCount").textContent = $("q").value.trim() ? (matches.length ? `${matchIdx + 1}/${matches.length}` : "0") : "";
+  if (!hl) return;
+  CSS.highlights.set("search", new Highlight(...matches.map((m) => m.r)));
+  const cur = matches[matchIdx];
+  CSS.highlights.set("search-cur", cur ? new Highlight(cur.r) : new Highlight());
+  if (cur && scroll) cur.row.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+function step(d) { if (!matches.length) return; matchIdx = (matchIdx + d + matches.length) % matches.length; paintMatches(true); }
+/* Make the first match inside a given line the current one (used from the recordings list). */
+function jumpToSeg(segId) {
+  const k = matches.findIndex((m) => m.row.id === "seg" + segId);
+  if (k >= 0) { matchIdx = k; paintMatches(true); } else $("seg" + segId)?.scrollIntoView({ block: "center" });
+  const row = $("seg" + segId); row?.classList.add("flash"); setTimeout(() => row?.classList.remove("flash"), 1600);
+}
+
+function applyFilters() {
+  const q = fold($("q").value.trim());
+  const spk = $("fSpk").value, edOnly = $("fEdited").checked, mOnly = $("fMatch").checked && q;
+  let shown = 0;
+  for (const row of $("segs").children) {
+    const s = job.segments.find((x) => "seg" + x.id === row.id);
+    const hide = (spk !== "" && s.speaker !== +spk) ||
+      (edOnly && !(row.classList.contains("edited") || row.classList.contains("added"))) ||
+      (mOnly && !fold(s.text_edited).includes(q));
+    row.hidden = hide; if (!hide) shown++;
+  }
+  $("empty").hidden = shown > 0;
+  const n = [$("fEdited").checked, $("fMatch").checked].filter(Boolean).length;
+  $("fSum").textContent = n ? t("filters_n", { n }) : t("filters");
+  $("fSum").classList.toggle("active", n > 0);
+}
+$("repToggle").onclick = () => { $("repBox").hidden = !$("repBox").hidden; if (!$("repBox").hidden) $("rep").focus(); };
+// close any open dropdown when clicking elsewhere
+document.addEventListener("click", (e) => {
+  document.querySelectorAll("details.menu[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; });
+});
+
+$("q").oninput = () => refreshSearch(true);
+$("q").onkeydown = (e) => {
+  if (e.key === "Enter") { e.preventDefault(); step(e.shiftKey ? -1 : 1); }
+  if (e.key === "Escape") { $("q").value = ""; refreshSearch(); }
+};
+$("qNext").onclick = () => step(1); $("qPrev").onclick = () => step(-1);
+for (const id of ["fSpk", "fEdited", "fMatch"]) $(id).onchange = () => refreshSearch(false);
+$("repAll").onclick = async () => {
+  const q = $("q").value.trim();
+  if (!q) return toast(t("type_find"));
+  const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  const hits = job.segments.filter((s) => rx.test(s.text_edited) && (rx.lastIndex = 0, true));
+  if (!hits.length) return toast(t("nothing_replace"));
+  await checkpoint();
+  for (const s of hits) s.text_edited = s.text_edited.replace(rx, $("rep").value);
+  await commit(plural(hits.length, "replaced_1", "replaced_n"));
+  refreshSearch(false);
+};
+
+/* ================= give a selected part of a line to another speaker ================= */
+let pending = null;
+function selectionInLine() {
+  const sel = getSelection();
+  if (!sel.rangeCount || sel.isCollapsed) return null;
+  const r = sel.getRangeAt(0);
+  const c = r.commonAncestorContainer;
+  const txt = (c.nodeType === 1 ? c : c.parentElement)?.closest(".txt");
+  if (!txt) return null;
+  const pre = document.createRange(); pre.selectNodeContents(txt); pre.setEnd(r.startContainer, r.startOffset);
+  const a = pre.toString().length, b = a + r.toString().length;
+  return { txt, a, b, rect: r.getBoundingClientRect() };
+}
+document.addEventListener("mouseup", (ev) => !ev.target.closest?.("#selPop") && setTimeout(() => {
+  const pop = $("selPop"); const s = job && !$("view").hidden && selectionInLine();
+  if (!s || !s.txt.textContent.slice(s.a, s.b).trim()) { pop.hidden = true; return; }
+  pending = { seg: job.segments.find((x) => "seg" + x.id === s.txt.parentElement.id), a: s.a, b: s.b };
+  pop.replaceChildren(el("span", { textContent: t("who_said") }));
+  for (const i of spkIds()) {
+    const b = el("button", { textContent: spkLabel(i), className: spkClass(i) });
+    b.onmousedown = (e) => e.preventDefault(); // keep the selection
+    b.onclick = () => splitTo(i);
+    pop.append(b);
+  }
+  pop.hidden = false;
+  pop.style.left = Math.max(8, Math.min(s.rect.left, innerWidth - pop.offsetWidth - 8)) + "px";
+  pop.style.top = Math.min(s.rect.bottom + 8, innerHeight - pop.offsetHeight - 70) + "px";
+}, 0));
+document.addEventListener("scroll", () => ($("selPop").hidden = true), true);
+
+async function splitTo(speaker) {
+  $("selPop").hidden = true;
+  if (!pending) return;
+  await checkpoint();
+  const { seg, a, b } = pending; pending = null;
+  const j = await api(`/api/jobs/${job.id}/split`, json("POST", { segment_id: seg.id, start: a, end: b, speaker }));
+  getSelection().removeAllRanges();
+  applyJob(j);
+  toast(t("given_to", { s: spkLabel(speaker) }), true);
+}
+
+/* ================= player ================= */
+const audio = $("audio");
+function playRange(a, b) { stopAt = b; audio.currentTime = a; audio.play(); }
+let lastPlaying = null;
+audio.ontimeupdate = () => {
+  $("clock").textContent = fmt(audio.currentTime);
+  if (stopAt !== null && audio.currentTime >= stopAt) { audio.pause(); stopAt = null; }
+  if (!job) return;
+  const cur = job.segments.find((s) => audio.currentTime >= s.start && audio.currentTime < s.end);
+  const rowEl = cur && !audio.paused ? $("seg" + cur.id) : null;
+  if (rowEl === lastPlaying) return;
+  lastPlaying?.classList.remove("playing"); rowEl?.classList.add("playing"); lastPlaying = rowEl;
+  const editing = document.activeElement?.classList.contains("txt");
+  if (rowEl && $("follow").checked && !editing) rowEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
+};
+audio.onplay = () => ($("pp").textContent = "⏸"); audio.onpause = () => ($("pp").textContent = "▶");
+const togglePlay = () => { stopAt = null; audio.paused ? audio.play() : audio.pause(); };
+$("pp").onclick = togglePlay;
+$("back").onclick = () => (audio.currentTime = Math.max(0, audio.currentTime - 5));
+$("fwd").onclick = () => (audio.currentTime += 5);
+$("speed").onchange = (e) => (audio.playbackRate = +e.target.value);
+
+/* ================= export ================= */
+const desktop = () => window.pywebview?.api;
+$("expGo").onclick = async () => {
+  await save();
+  const v = $("expVersion").value, f = $("expFmt").value;
+  $("expGo").closest("details").open = false;
+  if (desktop()?.save_export) { // native app: real "Save as" dialog
+    const r = await desktop().save_export(job.id, v, f, LANG);
+    if (r.cancelled) return;
+    if (r.error) return toast(t("export_failed") + r.error);
+    const msg = r.paths.length === 1 ? t("saved_file", { p: r.paths[0] }) : t("saved_files", { n: r.paths.length, p: r.paths[0].replace(/[\\/][^\\/]+$/, "") });
+    return toast(msg, false, { label: t("show_folder"), run: () => desktop().reveal(r.paths[0]) });
+  }
+  // plain browser: let the browser ask where to save if it can, otherwise download
+  for (const ver of v === "both" ? ["original", "edited"] : [v]) {
+    const url = `/api/jobs/${job.id}/export?version=${ver}&fmt=${f}&lang=${LANG}`;
+    const name = job.filename.replace(/\.[^.]+$/, "") + `.${ver}.${f}`;
+    if (window.showSaveFilePicker) {
+      try {
+        const h = await showSaveFilePicker({ suggestedName: name });
+        const w = await h.createWritable(); await w.write(await (await fetch(url)).blob()); await w.close();
+        toast(t("saved_file", { p: h.name })); continue;
+      } catch (e) { if (e.name === "AbortError") return; }
+    }
+    el("a", { href: url, download: name }).click();
+    await new Promise((r) => setTimeout(r, 400));
+  }
+};
+
+/* ================= GPU toggle ================= */
+function showGpu(st) {
+  gpuState = st;
+  const cb = $("gpu");
+  cb.disabled = !st.gpu_available;
+  cb.checked = st.gpu_available && st.use_gpu;
+  $("gpuLabel").textContent = st.gpu_available ? (cb.checked ? t("gpu_on") : t("gpu_off")) : t("gpu_na");
+  $("gpuBox").title = st.gpu_available ? t("gpu_title", { g: st.gpu_name || "NVIDIA GPU" }) : t("cpu_title", { e: st.gpu_error || "" });
+}
+$("gpu").onchange = async (e) => showGpu(await api("/api/settings", json("PUT", { use_gpu: e.target.checked })));
+
+/* ================= language & credits ================= */
+function renderCredits() {
+  const link = el("a", { href: "https://selimoguz.com.tr", className: "ext", textContent: "Selim Oğuz" });
+  $("creditsLine").replaceChildren(`${t("idea")}: Umut Akbaş  ·  ${t("developer")}: `, link, ` ${t("and")} Claude`);
+}
+function setLang(l, persist = true) {
+  LANG = I18N[l] ? l : "en";
+  $("langSel").value = LANG;
+  applyI18n(); renderCredits();
+  if (gpuState) showGpu(gpuState);
+  if (job && !$("view").hidden) { renderSpeakers(); renderSegs(); } else loadJobs();
+  if (persist) api("/api/settings", json("PUT", { ui_lang: LANG })).catch(() => {});
+}
+$("langSel").onchange = (e) => setLang(e.target.value);
+$("aboutBtn").onclick = () => $("aboutDlg").showModal();
+// external links open in the normal browser, never inside the app window
+document.addEventListener("click", (e) => {
+  const a = e.target.closest?.("a.ext");
+  if (!a) return;
+  e.preventDefault();
+  desktop()?.open_url ? desktop().open_url(a.href) : window.open(a.href, "_blank", "noopener");
+});
+
+/* ================= keyboard ================= */
+document.addEventListener("keydown", (e) => {
+  const inView = job && !$("view").hidden;
+  const typing = e.target.closest?.(".txt, input, select, textarea");
+  if (e.ctrlKey && e.code === "Space" && inView) { e.preventDefault(); togglePlay(); }
+  else if (e.ctrlKey && e.key.toLowerCase() === "f" && inView) { e.preventDefault(); $("q").focus(); $("q").select(); }
+  else if (e.ctrlKey && e.key.toLowerCase() === "z" && inView && !typing) { e.preventDefault(); undo(); }
+  else if (e.altKey && e.key === "ArrowLeft" && inView) { e.preventDefault(); $("back").click(); }
+  else if (e.altKey && e.key === "ArrowRight" && inView) { e.preventDefault(); $("fwd").click(); }
+  else if (e.key === "Escape") $("selPop").hidden = true;
+});
+$("helpBtn").onclick = () => $("help").showModal();
+
+/* ================= wiring ================= */
+$("homeBtn").onclick = async () => { await save(); audio.pause(); $("view").hidden = true; $("player").hidden = true; $("home").hidden = false; $("homeBtn").hidden = true; job = null; loadJobs(); };
+$("file").onchange = (e) => upload(e.target.files[0]);
+const drop = $("drop");
+["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (e) => upload(e.dataTransfer.files[0]));
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
+window.addEventListener("beforeunload", () => save());
+
+api("/api/settings")
+  .then((st) => { showGpu(st); setLang(st.ui_lang || (navigator.language.startsWith("tr") ? "tr" : "en"), false); })
+  .catch(() => setLang("tr", false));

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meeting Transcriber</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><h1 data-i18n="app">Meeting Transcriber</h1><button id="homeBtn" hidden data-i18n="all_recordings"></button>
+  <span class="spacer"></span>
+  <select id="langSel" data-i18n-title="language"><option value="tr">TR</option><option value="en">EN</option></select>
+  <button id="aboutBtn" class="icon" data-i18n-title="about_title">ⓘ</button>
+  <label id="gpuBox" class="toggle"><input type="checkbox" id="gpu" disabled><span class="knob"></span><span id="gpuLabel">GPU</span></label>
+</header>
+
+<main id="home">
+  <div id="drop" tabindex="0">
+    <p class="big" data-i18n="drop"></p>
+    <p><span data-i18n="or"></span> <label class="link"><span data-i18n="browse"></span><input type="file" id="file" accept="audio/*,video/*" hidden></label></p>
+  </div>
+  <section id="progress" hidden>
+    <div id="pname"></div>
+    <div class="bar"><div id="pfill"></div></div>
+    <div id="pstage"></div>
+  </section>
+  <div class="listhead">
+    <h2><span data-i18n="prev_recordings"></span> <span id="jobCount"></span></h2>
+    <div id="jobFilters">
+      <input id="jq" type="search" data-i18n-ph="jq_ph">
+      <select id="jStatus">
+        <option value="" data-i18n="all_statuses"></option><option value="done" data-i18n="st_done"></option>
+        <option value="running" data-i18n="st_running"></option><option value="error" data-i18n="st_error"></option>
+      </select>
+      <select id="jLang"></select>
+      <select id="jSort">
+        <option value="new" data-i18n="sort_new"></option><option value="old" data-i18n="sort_old"></option>
+        <option value="name" data-i18n="sort_name"></option><option value="long" data-i18n="sort_long"></option>
+        <option value="short" data-i18n="sort_short"></option>
+      </select>
+    </div>
+  </div>
+  <ul id="jobs"></ul>
+  <p id="jobsEmpty" class="hint" hidden></p>
+  <p class="credits" id="creditsLine"></p>
+</main>
+
+<main id="view" hidden>
+  <div class="toolbar">
+    <h2 id="title"></h2>
+    <span class="spacer"></span>
+    <button id="undoBtn" class="icon" disabled data-i18n-title="undo_title">↶</button>
+    <button id="helpBtn" class="icon" data-i18n-title="shortcuts_title">⌨</button>
+    <details class="menu"><summary data-i18n="export"></summary>
+      <div>
+        <label><span data-i18n="version"></span>
+          <select id="expVersion"><option value="edited" data-i18n="edited"></option><option value="original" data-i18n="original"></option><option value="both" data-i18n="both"></option></select></label>
+        <label><span data-i18n="format"></span>
+          <select id="expFmt"><option value="docx">Word (.docx)</option><option value="txt">TXT</option><option value="md">Markdown</option><option value="srt" data-i18n="srt"></option><option value="json">JSON</option></select></label>
+        <button id="expGo" data-i18n="save_as"></button>
+      </div>
+    </details>
+  </div>
+  <div id="speakers"></div>
+  <div id="filters">
+    <div class="searchbox">
+      <input id="q" type="search" data-i18n-ph="q_ph">
+      <span id="qCount"></span>
+      <button id="qPrev" class="small icon" data-i18n-title="prev_hit">↑</button>
+      <button id="qNext" class="small icon" data-i18n-title="next_hit">↓</button>
+      <button id="repToggle" class="small icon" data-i18n-title="find_replace">⇄</button>
+    </div>
+    <div class="searchbox" id="repBox" hidden>
+      <input id="rep" data-i18n-ph="rep_ph">
+      <button id="repAll" class="small" data-i18n="replace_all"></button>
+    </div>
+    <span class="spacer"></span>
+    <select id="fSpk"></select>
+    <details class="menu" id="fMenu"><summary id="fSum" data-i18n="filters"></summary>
+      <div>
+        <label class="chk"><input type="checkbox" id="fEdited"> <span data-i18n="edited_only"></span></label>
+        <label class="chk"><input type="checkbox" id="fMatch"> <span data-i18n="matches_only"></span></label>
+        <label class="chk"><input type="checkbox" id="follow" checked> <span data-i18n="follow"></span></label>
+      </div>
+    </details>
+  </div>
+  <div id="segs"></div>
+  <p id="empty" class="hint" hidden data-i18n="no_lines_filter"></p>
+</main>
+
+<footer id="player" hidden>
+  <audio id="audio" preload="auto"></audio>
+  <button id="pp">▶</button>
+  <button id="back">−5s</button><button id="fwd">+5s</button>
+  <span id="clock">00:00:00</span>
+  <select id="speed"><option>0.75</option><option selected>1</option><option>1.25</option><option>1.5</option></select>×
+  <span id="saved"></span>
+</footer>
+<div id="selPop" hidden></div>
+<div id="toast" hidden><span id="toastMsg"></span><button id="toastUndo" class="small" hidden></button></div>
+
+<dialog id="help">
+  <h3 data-i18n="shortcuts_title"></h3>
+  <table>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Space</kbd></td><td data-i18n="k_play"></td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td data-i18n="k_line"></td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td data-i18n="k_search"></td></tr>
+    <tr><td><kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd></td><td data-i18n="k_next"></td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td data-i18n="k_undo"></td></tr>
+    <tr><td><kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>→</kbd></td><td data-i18n="k_seek"></td></tr>
+    <tr><td><kbd>Esc</kbd></td><td data-i18n="k_esc"></td></tr>
+  </table>
+  <p class="hint helptip" data-i18n="tip"></p>
+  <form method="dialog"><button data-i18n="close"></button></form>
+</dialog>
+
+<dialog id="aboutDlg">
+  <h3 data-i18n="app"></h3>
+  <p class="hint" data-i18n="about_desc"></p>
+  <table class="creditTable">
+    <tr><td data-i18n="idea"></td><td>Umut Akbaş</td></tr>
+    <tr><td data-i18n="developer"></td><td><a href="https://selimoguz.com.tr" class="ext">Selim Oğuz</a> <span data-i18n="and"></span> Claude</td></tr>
+  </table>
+  <form method="dialog"><button data-i18n="close"></button></form>
+</dialog>
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
