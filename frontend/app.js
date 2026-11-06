@@ -238,10 +238,12 @@ function renderSpeakers() {
       del.onclick = async () => { await checkpoint(); delete spkNames[i]; commit(t("speaker_removed")); };
       menu.append(del);
     }
+    window.peopleHooks?.speakerMenu(i, menu); // people.js: "Save to People"
     const more = el("details", { className: "menu spkmore" }, el("summary", { textContent: "⋯", title: t("speaker_menu") }), menu);
     const stats = el("span", { className: "stats", textContent: mine.length ? `${mmss(talk)} · ${Math.round((talk / total) * 100)}% · ${plural(mine.length, "line_1", "lines_n")}` : t("no_lines") });
     const card = el("div", { className: "spkcard " + spkClass(i) + (mine.length ? "" : " unused") },
       el("div", { className: "spkline" }, inp, more), stats);
+    window.peopleHooks?.speakerCard(i, card); // people.js: "%82" badge / "Selim olabilir? ✓"
     box.append(card);
   }
   const add = el("button", { className: "icon", textContent: "+", title: t("add_speaker_title") });

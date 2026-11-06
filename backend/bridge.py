@@ -193,3 +193,89 @@ class Api:
 
         if isinstance(url, str) and url.startswith(("https://", "http://")):
             webbrowser.open(url)
+
+    # ---- people ----
+    def list_people(self) -> list[dict]:
+        from . import people
+
+        return people.list_people()
+
+    def create_person(self, name: str) -> dict:
+        from . import people
+
+        return people.create_person(name)
+
+    def rename_person(self, person_id: str, name: str) -> dict:
+        from . import people
+
+        return people.rename_person(person_id, name)
+
+    def delete_person(self, person_id: str) -> dict:
+        from . import people
+
+        people.delete_person(person_id)
+        return {"ok": True}
+
+    def add_person_sample_file(self, person_id: str | None = None, name: str | None = None) -> dict:
+        """Native "Open" dialog, then add the chosen recording as a voice sample.
+        person_id None + name: a new person is created once the sample is good enough."""
+        import webview
+
+        path = _first(self._window().create_file_dialog(
+            webview.FileDialog.OPEN, directory=self._last_dir("open_dir"), file_types=MEDIA_TYPES))
+        if not path:
+            return {"cancelled": True}
+        self._remember_dir("open_dir", str(Path(path).parent))
+        return self._sample_from_path(path, person_id, name)
+
+    def _sample_from_path(self, path: str, person_id: str | None, name: str | None) -> dict:
+        from . import audio, people
+
+        if person_id:
+            return people.add_sample_from_file(person_id, path)
+        if not (name or "").strip():
+            raise ValueError("name required")
+        speech = people.speech_only(audio.decode(Path(path))[0])
+        if len(speech) / people.SR < people.MIN_SPEECH:  # nothing is created for a too short sample
+            people.too_short(speech)
+        pid = people.create_person(name)["id"]
+        return people._enroll(pid, speech, "file:" + Path(path).name, people.MIN_SPEECH)
+
+    def start_recording(self) -> dict:
+        from . import people
+
+        return people.start_recording()
+
+    def recording_status(self) -> dict:
+        from . import people
+
+        return people.recording_status()
+
+    def stop_recording(self, person_id: str | None = None, name: str | None = None) -> dict:
+        from . import people
+
+        return people.stop_recording(person_id, name)
+
+    def cancel_recording(self) -> dict:
+        from . import people
+
+        return people.cancel_recording()
+
+    def save_speaker_as_person(self, job_id: str, speaker: int, person_id: str | None = None,
+                               name: str | None = None) -> dict:
+        from . import people
+
+        _job(job_id)
+        return people.add_sample_from_job(job_id, int(speaker), person_id or None, name)
+
+    def rematch_job(self, job_id: str) -> dict:
+        from . import people
+
+        _job(job_id)
+        return people.rematch_job(job_id)
+
+    def accept_suggestion(self, job_id: str, speaker: int, person_id: str) -> dict:
+        from . import people
+
+        _job(job_id)
+        return people.accept_suggestion(job_id, int(speaker), person_id)
