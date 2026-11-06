@@ -11,6 +11,12 @@ for pkg in ("faster_whisper", "ctranslate2", "sherpa_onnx", "onnxruntime", "av",
     d, b, h = collect_all(pkg)
     datas += d; binaries += b; hiddenimports += h
 
+# whisper.cpp Vulkan runtime (AMD / Intel GPUs), built by tools/build_whispercpp.ps1
+import os
+if os.path.isdir("vendor/whispercpp"):
+    for f in os.listdir("vendor/whispercpp"):
+        binaries.append((os.path.join("vendor/whispercpp", f), "whispercpp"))
+
 a = Analysis(
     ["app.py"], datas=datas, binaries=binaries, hiddenimports=hiddenimports,
     excludes=["nvidia", "tkinter", "matplotlib", "pytest", "IPython"],

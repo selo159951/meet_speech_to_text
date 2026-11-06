@@ -14,3 +14,6 @@ dist/
 # Local editor / assistant settings, logs
 .claude/
 *.log
+
+# whisper.cpp Vulkan runtime (tools/build_whispercpp.ps1)
+vendor/
