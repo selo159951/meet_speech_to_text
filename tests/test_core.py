@@ -188,7 +188,7 @@ def test_desktop_save_export(tmp_path, monkeypatch):
     import sys
     import types
 
-    from backend import desktop
+    from backend import bridge
 
     jid = _job()
     calls = []
@@ -198,9 +198,9 @@ def test_desktop_save_export(tmp_path, monkeypatch):
             calls.append((kind, kw))
             return str(tmp_path / "chosen") if kind == "save" else (str(tmp_path),)
 
-    fake = types.SimpleNamespace(windows=[FakeWin()], FileDialog=types.SimpleNamespace(SAVE="save", FOLDER="folder"))
+    fake = types.SimpleNamespace(FileDialog=types.SimpleNamespace(SAVE="save", FOLDER="folder", OPEN="open"))
     monkeypatch.setitem(sys.modules, "webview", fake)
-    api = desktop.Api()
+    api = bridge.Api(window_getter=FakeWin)
     r = api.save_export(jid, "edited", "txt")
     assert r["paths"] == [str(tmp_path / "chosen.txt")] and "hello" in (tmp_path / "chosen.txt").read_text("utf-8")
     assert calls[0][1]["save_filename"] == "meet.edited.txt"
@@ -227,15 +227,40 @@ def test_job_id_traversal_rejected():
         store.job_path("../x")
 
 
-def test_api_roundtrip():
-    from fastapi.testclient import TestClient
-    from backend.main import app
+def test_bridge_roundtrip():
+    from backend.bridge import Api
 
+    api = Api(window_getter=lambda: None)
     jid = _job()
-    c = TestClient(app)
-    assert c.get(f"/api/jobs/{jid}").json()["filename"] == "meet.mp3"
-    assert c.patch(f"/api/jobs/{jid}", json={"texts": {"0": "fixed"}}).status_code == 200
-    r = c.get(f"/api/jobs/{jid}/export?version=edited&fmt=txt")
-    assert "fixed" in r.text and "attachment" in r.headers["content-disposition"]
-    assert c.get("/api/jobs/doesnotexist").status_code == 404
-    assert c.get(f"/api/jobs/{jid}/export?fmt=exe").status_code == 400
+    assert api.get_job(jid)["filename"] == "meet.mp3"
+    api.save_edits(jid, {"0": "fixed"})  # keys arrive as strings from JS
+    assert api.get_job(jid)["segments"][0]["text_edited"] == "fixed"
+    assert api.get_job(jid)["segments"][0]["text_original"] == "hello"
+    with pytest.raises(ValueError):
+        api.get_job("doesnotexist")
+    with pytest.raises(ValueError):
+        api.split(jid, 0, 0, 2, 99)
+    assert api.rename_job(jid, "x")["filename"] == "x"
+    assert [j["id"] for j in api.list_jobs("fixed")] == [jid]
+    assert api.delete_job(jid) == {"ok": True} and api.list_jobs() == []
+    assert not [n for n in dir(api) if not n.startswith("_") and n in ("_window", "_last_dir")]
+
+
+def test_start_job_never_deletes_the_users_file(tmp_path, monkeypatch):
+    from backend import bridge, pipeline
+
+    src = tmp_path / "my meeting.m4a"
+    src.write_bytes(b"not really audio")
+    done = []
+    real = pipeline.run_job
+    monkeypatch.setattr(bridge, "run_job", lambda *a, **kw: (real(*a, **kw), done.append(1)))
+    r = bridge.Api(window_getter=lambda: None).start_job(str(src))
+    import time
+    for _ in range(100):
+        if done:
+            break
+        time.sleep(0.05)
+    assert done and src.exists()  # the job failed (not audio) but the file is untouched
+    assert store.read_transcript(r["id"])["status"] == "error"
+    with pytest.raises(ValueError):
+        bridge.Api().start_job(str(tmp_path / "missing.mp3"))

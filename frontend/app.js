@@ -11,12 +11,10 @@ const plural = (n, one, many) => (n === 1 ? t(one) : t(many, { n }));
 let job = null, stopAt = null, dirty = {}, saveTimer = null, segSpk = {}, spkNames = {};
 let undoStack = [], gpuState = null;
 
-async function api(url, opts) {
-  const r = await fetch(url, opts);
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
-}
-const json = (method, body) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+/* Backend calls go straight to Python through pywebview's bridge - there is no web server. */
+const bridgeReady = new Promise((res) => (window.pywebview?.api ? res() : window.addEventListener("pywebviewready", res, { once: true })));
+async function call(name, ...args) { await bridgeReady; return window.pywebview.api[name](...args); }
+const MEDIA = "https://media.meettranscriber";
 
 /* Wrap every occurrence of q (folded) in <mark>, safely (no innerHTML). */
 function marked(text, q) {
@@ -35,7 +33,7 @@ let jobsTimer = null;
 
 async function loadJobs() {
   const q = $("jq").value.trim();
-  let list = await api("/api/jobs" + (q ? "?q=" + encodeURIComponent(q) : ""));
+  let list = await call("list_jobs", q);
   const langs = [...new Set(list.map((j) => j.language).filter(Boolean))].sort();
   const lf = $("jLang"), curLang = lf.value;
   lf.replaceChildren(new Option(t("all_languages"), ""), ...langs.map((l) => new Option(l.toUpperCase(), l)));
@@ -86,24 +84,21 @@ function jobRow(j, q) {
   const ren = el("button", { textContent: t("rename"), className: "small" });
   ren.onclick = async () => {
     const name = prompt(t("rename_prompt"), j.filename);
-    if (name && name.trim() && name !== j.filename) { await api(`/api/jobs/${j.id}/rename`, json("POST", { name })); loadJobs(); }
+    if (name && name.trim() && name !== j.filename) { await call("rename_job", j.id, name); loadJobs(); }
   };
   const del = el("button", { textContent: t("delete"), className: "small" });
-  del.onclick = async () => { if (confirm(t("delete_confirm", { name: j.filename }))) { await api("/api/jobs/" + j.id, { method: "DELETE" }); loadJobs(); } };
+  del.onclick = async () => { if (confirm(t("delete_confirm", { name: j.filename }))) { await call("delete_job", j.id); loadJobs(); } };
   return el("li", {}, info, el("div", { className: "jbtns" }, ren, del));
 }
 $("jq").oninput = () => { clearTimeout(jobsTimer); jobsTimer = setTimeout(loadJobs, 250); };
 for (const id of ["jStatus", "jLang", "jSort"]) $(id).onchange = loadJobs;
 
-async function upload(file) {
-  if (!file) return;
-  $("progress").hidden = false; $("pname").textContent = file.name;
-  $("pstage").textContent = t("uploading"); $("pfill").style.width = "0%";
-  const fd = new FormData(); fd.append("file", file);
-  try {
-    const { id } = await api("/api/jobs", { method: "POST", body: fd });
-    watch(id, file.name);
-  } catch (e) { $("pstage").textContent = t("upload_failed") + e.message; }
+/* Files are read from disk by path: dropped files are handled by Python (it gets the full path),
+   "browse" opens the native Open dialog. Both end up in onJobStarted. */
+window.onJobStarted = (r) => { if (r && r.id) watch(r.id, r.filename); };
+window.onJobError = (msg) => { $("progress").hidden = false; $("pfill").style.width = "0%"; $("pstage").textContent = t("upload_failed") + msg; };
+async function browse() {
+  try { const r = await call("pick_and_start"); if (!r.cancelled) onJobStarted(r); } catch (e) { onJobError(e.message || e); }
 }
 
 function watch(id, name) {
@@ -111,7 +106,7 @@ function watch(id, name) {
   const t0 = Date.now();
   const tick = async () => {
     let j;
-    try { j = await api("/api/jobs/" + id); } catch { return setTimeout(tick, 2000); }
+    try { j = await call("get_job", id); } catch { return setTimeout(tick, 2000); }
     const secs = Math.round((Date.now() - t0) / 1000);
     const pct = Math.round((j.progress || 0) * 100);
     const active = j.stage === "transcribing" || j.stage === "diarizing";
@@ -128,11 +123,11 @@ function watch(id, name) {
 
 /* ================= transcript state ================= */
 async function openJob(id) {
-  const j = await api("/api/jobs/" + id);
+  const j = await call("get_job", id);
   undoStack = []; updateUndo();
   $("home").hidden = true; $("view").hidden = false; $("player").hidden = false; $("homeBtn").hidden = false;
   $("title").textContent = j.filename + (j.language ? `  (${j.language})` : "");
-  $("audio").src = `/api/jobs/${id}/audio`;
+  $("audio").src = `${MEDIA}/${id}/audio.mp3`;
   $("q").value = ""; $("fSpk").value = ""; $("fEdited").checked = false; $("fMatch").checked = false;
   applyJob(j);
 }
@@ -165,7 +160,7 @@ async function commit(msg, undoable = true) {
   // the server ignores them for lines it already has.
   const segments = job.segments.map(({ id, start, end, speaker, text_edited, text_original, words }) =>
     ({ id, start, end, speaker, text_edited, text_original: text_original || "", words: words || [] }));
-  const j = await api(`/api/jobs/${job.id}/transcript`, json("PUT", { segments, speakers: spkNames }));
+  const j = await call("replace_transcript", job.id, segments, spkNames);
   $("saved").textContent = t("saved");
   applyJob(j);
   if (msg) toast(msg, undoable);
@@ -246,7 +241,7 @@ function renderSpeakers() {
 
 async function detectNames() {
   await checkpoint();
-  const r = await api(`/api/jobs/${job.id}/detect-names`, { method: "POST" });
+  const r = await call("detect_names", job.id);
   const found = Object.entries(r.found).map(([k, v]) => `${spkLabel(k) || t("speaker_n", { n: +k + 1 })} → ${v}`);
   if (!found.length) { undoStack.pop(); updateUndo(); }
   applyJob(r.job);
@@ -316,9 +311,8 @@ function scheduleSave() { $("saved").textContent = t("saving"); clearTimeout(sav
 async function save() {
   clearTimeout(saveTimer);
   if (!job || (!dirty.texts && !Object.keys(segSpk).length)) return;
-  const body = { texts: dirty.texts || {}, segment_speakers: segSpk };
   try {
-    await api("/api/jobs/" + job.id, json("PATCH", body));
+    await call("save_edits", job.id, dirty.texts || {}, segSpk);
     dirty = {}; segSpk = {}; $("saved").textContent = t("saved");
   } catch (e) { $("saved").textContent = t("save_failed"); }
 }
@@ -439,7 +433,7 @@ async function splitTo(speaker) {
   if (!pending) return;
   await checkpoint();
   const { seg, a, b } = pending; pending = null;
-  const j = await api(`/api/jobs/${job.id}/split`, json("POST", { segment_id: seg.id, start: a, end: b, speaker }));
+  const j = await call("split", job.id, seg.id, a, b, speaker);
   getSelection().removeAllRanges();
   applyJob(j);
   toast(t("given_to", { s: spkLabel(speaker) }), true);
@@ -468,32 +462,15 @@ $("fwd").onclick = () => (audio.currentTime += 5);
 $("speed").onchange = (e) => (audio.playbackRate = +e.target.value);
 
 /* ================= export ================= */
-const desktop = () => window.pywebview?.api;
 $("expGo").onclick = async () => {
   await save();
   const v = $("expVersion").value, f = $("expFmt").value;
   $("expGo").closest("details").open = false;
-  if (desktop()?.save_export) { // native app: real "Save as" dialog
-    const r = await desktop().save_export(job.id, v, f, LANG);
-    if (r.cancelled) return;
-    if (r.error) return toast(t("export_failed") + r.error);
-    const msg = r.paths.length === 1 ? t("saved_file", { p: r.paths[0] }) : t("saved_files", { n: r.paths.length, p: r.paths[0].replace(/[\\/][^\\/]+$/, "") });
-    return toast(msg, false, { label: t("show_folder"), run: () => desktop().reveal(r.paths[0]) });
-  }
-  // plain browser: let the browser ask where to save if it can, otherwise download
-  for (const ver of v === "both" ? ["original", "edited"] : [v]) {
-    const url = `/api/jobs/${job.id}/export?version=${ver}&fmt=${f}&lang=${LANG}`;
-    const name = job.filename.replace(/\.[^.]+$/, "") + `.${ver}.${f}`;
-    if (window.showSaveFilePicker) {
-      try {
-        const h = await showSaveFilePicker({ suggestedName: name });
-        const w = await h.createWritable(); await w.write(await (await fetch(url)).blob()); await w.close();
-        toast(t("saved_file", { p: h.name })); continue;
-      } catch (e) { if (e.name === "AbortError") return; }
-    }
-    el("a", { href: url, download: name }).click();
-    await new Promise((r) => setTimeout(r, 400));
-  }
+  const r = await call("save_export", job.id, v, f, LANG); // native "Save as" dialog
+  if (r.cancelled) return;
+  if (r.error) return toast(t("export_failed") + r.error);
+  const msg = r.paths.length === 1 ? t("saved_file", { p: r.paths[0] }) : t("saved_files", { n: r.paths.length, p: r.paths[0].replace(/[\\/][^\\/]+$/, "") });
+  toast(msg, false, { label: t("show_folder"), run: () => call("reveal", r.paths[0]) });
 };
 
 /* ================= GPU toggle ================= */
@@ -505,7 +482,7 @@ function showGpu(st) {
   $("gpuLabel").textContent = st.gpu_available ? (cb.checked ? t("gpu_on") : t("gpu_off")) : t("gpu_na");
   $("gpuBox").title = st.gpu_available ? t("gpu_title", { g: st.gpu_name || "NVIDIA GPU" }) : t("cpu_title", { e: st.gpu_error || "" });
 }
-$("gpu").onchange = async (e) => showGpu(await api("/api/settings", json("PUT", { use_gpu: e.target.checked })));
+$("gpu").onchange = async (e) => showGpu(await call("set_settings", { use_gpu: e.target.checked }));
 
 /* ================= language & credits ================= */
 function renderCredits() {
@@ -518,7 +495,7 @@ function setLang(l, persist = true) {
   applyI18n(); renderCredits();
   if (gpuState) showGpu(gpuState);
   if (job && !$("view").hidden) { renderSpeakers(); renderSegs(); } else loadJobs();
-  if (persist) api("/api/settings", json("PUT", { ui_lang: LANG })).catch(() => {});
+  if (persist) call("set_settings", { ui_lang: LANG }).catch(() => {});
 }
 $("langSel").onchange = (e) => setLang(e.target.value);
 $("aboutBtn").onclick = () => $("aboutDlg").showModal();
@@ -527,7 +504,7 @@ document.addEventListener("click", (e) => {
   const a = e.target.closest?.("a.ext");
   if (!a) return;
   e.preventDefault();
-  desktop()?.open_url ? desktop().open_url(a.href) : window.open(a.href, "_blank", "noopener");
+  call("open_url", a.href);
 });
 
 /* ================= keyboard ================= */
@@ -545,15 +522,14 @@ $("helpBtn").onclick = () => $("help").showModal();
 
 /* ================= wiring ================= */
 $("homeBtn").onclick = async () => { await save(); audio.pause(); $("view").hidden = true; $("player").hidden = true; $("home").hidden = false; $("homeBtn").hidden = true; job = null; loadJobs(); };
-$("file").onchange = (e) => upload(e.target.files[0]);
+$("browseBtn").onclick = (e) => { e.preventDefault(); browse(); };
 const drop = $("drop");
 ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
 ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
-drop.addEventListener("drop", (e) => upload(e.dataTransfer.files[0]));
 window.addEventListener("dragover", (e) => e.preventDefault());
 window.addEventListener("drop", (e) => e.preventDefault());
 window.addEventListener("beforeunload", () => save());
 
-api("/api/settings")
+call("get_settings")
   .then((st) => { showGpu(st); setLang(st.ui_lang || (navigator.language.startsWith("tr") ? "tr" : "en"), false); })
   .catch(() => setLang("tr", false));

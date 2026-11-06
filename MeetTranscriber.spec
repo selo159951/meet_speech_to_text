@@ -4,11 +4,7 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [("frontend", "frontend"), ("models", "models")]
 binaries = []
-hiddenimports = [
-    "uvicorn.logging", "uvicorn.loops.auto", "uvicorn.protocols.http.auto",
-    "uvicorn.protocols.websockets.auto", "uvicorn.lifespan.on",
-    "backend.main", "backend.desktop", "backend.names",
-]
+hiddenimports = ["backend.bridge", "backend.window", "backend.names"]
 # packages with native DLLs or data files (VAD model, docx template, WebView2 bridge …)
 for pkg in ("faster_whisper", "ctranslate2", "sherpa_onnx", "onnxruntime", "av", "webview",
             "clr_loader", "pythonnet", "tokenizers", "docx"):

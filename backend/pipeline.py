@@ -11,7 +11,8 @@ from .merge import assign_speakers, build_segments
 _queue_lock = threading.Lock()  # one heavy job at a time
 
 
-def run_job(job_id: str, src: Path) -> None:
+def run_job(job_id: str, src: Path, keep_source: bool = True) -> None:
+    """keep_source=True: src is the user's own file and must never be deleted."""
     def stage(name: str, progress: float = 0.0, **extra):
         store.update_job(job_id, status="running", stage=name, progress=round(progress, 3), **extra)
 
@@ -64,7 +65,8 @@ def run_job(job_id: str, src: Path) -> None:
         traceback.print_exc()
         store.update_job(job_id, status="error", stage="error", error=f"{type(e).__name__}: {e}")
     finally:
-        try:
-            src.unlink(missing_ok=True)
-        except OSError:
-            pass
+        if not keep_source:  # only temporary copies are removed
+            try:
+                src.unlink(missing_ok=True)
+            except OSError:
+                pass

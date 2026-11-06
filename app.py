@@ -1,9 +1,5 @@
-"""Entry point: local FastAPI server + native window (falls back to browser)."""
-import socket
+"""Meeting Transcriber - desktop app (no web server, no open ports)."""
 import sys
-import threading
-import time
-import webbrowser
 
 from backend import store
 
@@ -13,46 +9,44 @@ if sys.stdout is None or sys.stderr is None:
     sys.stdout = sys.stdout or _log
     sys.stderr = sys.stderr or _log
 
-import uvicorn  # noqa: E402
 
-from backend.main import app  # noqa: E402
+def _fatal(msg: str) -> None:
+    print(msg, file=sys.stderr)
+    if sys.platform == "win32":
+        import ctypes
 
-
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+        ctypes.windll.user32.MessageBoxW(None, msg, "Meeting Transcriber", 0x10)
 
 
 def main():
-    if "--serve" in sys.argv:  # server only, fixed port (for testing the built .exe)
-        port = int(sys.argv[sys.argv.index("--serve") + 1])
-        uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning", use_colors=False)
-        return
-    port = free_port()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning",
-                                           use_colors=False))
-    threading.Thread(target=server.run, daemon=True).start()
-    while not server.started:
-        time.sleep(0.05)
-    url = f"http://127.0.0.1:{port}/"
-    if "--browser" in sys.argv:
-        print("Open", url)
-        webbrowser.open(url)
-        while True:
-            time.sleep(3600)
     try:
         import webview
 
-        from backend.desktop import Api
+        from backend.bridge import Api
+        from backend.window import START_URL, attach_file_drop, install_virtual_hosts
+    except Exception as e:  # missing runtime pieces
+        return _fatal(f"The app could not start:\n{e}")
 
-        webview.create_window("Meeting Transcriber", url, width=1100, height=800, js_api=Api())
-        webview.start()
+    if sys.platform == "win32":
+        install_virtual_hosts()
+    api = Api()
+    window = webview.create_window("Meeting Transcriber", START_URL, width=1180, height=820,
+                                   min_size=(720, 560), js_api=api)
+    api._get_window = lambda: window
+    attached = []
+
+    def on_loaded():
+        if not attached:  # the page is loaded once; register the drop handler once
+            attach_file_drop(window, api)
+            attached.append(True)
+
+    window.events.loaded += on_loaded
+    try:
+        webview.start(gui="edgechromium" if sys.platform == "win32" else None,
+                      private_mode=False, storage_path=str(store.data_dir() / "webview"))
     except Exception as e:
-        print("Native window unavailable (", e, ") - opening browser")
-        webbrowser.open(url)
-        while True:
-            time.sleep(3600)
+        _fatal("Microsoft Edge WebView2 is required.\n"
+               "Install it from https://go.microsoft.com/fwlink/p/?LinkId=2124703\n\n" + str(e))
 
 
 if __name__ == "__main__":

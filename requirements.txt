@@ -1,10 +1,6 @@
-fastapi
-uvicorn[standard]
-python-multipart
 faster-whisper
 sherpa-onnx
 pywebview
 numpy
-pytest
-httpx
 python-docx
+pytest
