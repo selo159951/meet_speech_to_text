@@ -4,10 +4,11 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [("frontend", "frontend"), ("models", "models"), ("assets", "assets")]
 binaries = []
-hiddenimports = ["backend.bridge", "backend.window", "backend.names"]
+hiddenimports = ["backend.bridge", "backend.window", "backend.names", "backend.people",
+                 "backend.system_api", "backend.engines.ct2", "backend.engines.whispercpp"]
 # packages with native DLLs or data files (VAD model, docx template, WebView2 bridge …)
 for pkg in ("faster_whisper", "ctranslate2", "sherpa_onnx", "onnxruntime", "av", "webview",
-            "clr_loader", "pythonnet", "tokenizers", "docx"):
+            "clr_loader", "pythonnet", "tokenizers", "docx", "sounddevice", "_sounddevice_data"):
     d, b, h = collect_all(pkg)
     datas += d; binaries += b; hiddenimports += h
 
