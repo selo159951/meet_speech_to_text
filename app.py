@@ -25,6 +25,10 @@ def free_port() -> int:
 
 
 def main():
+    if "--serve" in sys.argv:  # server only, fixed port (for testing the built .exe)
+        port = int(sys.argv[sys.argv.index("--serve") + 1])
+        uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning", use_colors=False)
+        return
     port = free_port()
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning",
                                            use_colors=False))

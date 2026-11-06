@@ -46,8 +46,16 @@ Tests: `.\.venv\Scripts\python -m pytest tests`
 ## GPU
 GPU support needs the CUDA 12 libraries: `pip install -r requirements-gpu.txt` (`Baslat.bat` does this automatically). The app finds them on its own. If the GPU fails mid-load it falls back to CPU.
 
-## Build a Windows .exe (later)
-`.\build_windows.ps1` → `dist\MeetTranscriber\MeetTranscriber.exe` (zip the folder and share it).
+## Windows .exe (no Python needed)
+```powershell
+.\build_windows.ps1        # dist\MeetTranscriber-CPU.zip  (~160 MB, any PC)
+.\build_windows.ps1 -Gpu   # also dist\MeetTranscriber-GPU.zip (~1.4 GB, adds NVIDIA CUDA libraries)
+```
+Unzip, double-click `MeetTranscriber.exe`. The first transcription downloads the Whisper model (~1.6 GB) once, after that everything works offline.
+The GPU version also runs on PCs without an NVIDIA card (it falls back to CPU), it is just bigger.
+
+Measured on a 22-core laptop with an RTX 1000 Ada, for 5 min of audio: GPU version 50 s, CPU version ≈ 2.5 min.
+So an 80 min meeting takes roughly 13 min (GPU) or 40 min (CPU); speaker separation always runs on the CPU.
 
 ## Credits
 - **Fikir Babası / Idea:** Umut Akbaş

@@ -24,6 +24,12 @@ def models_available() -> bool:
     return (d / SEG_MODEL).exists() and (d / EMB_MODEL).exists()
 
 
+import os
+
+# sherpa-onnx defaults to a single CPU thread, which makes long meetings very slow
+THREADS = max(1, min(16, (os.cpu_count() or 2) - 2))  # leave 2 cores for the UI/system
+
+
 def _make(num_clusters: int):
     import sherpa_onnx as so
 
@@ -31,8 +37,9 @@ def _make(num_clusters: int):
     cfg = so.OfflineSpeakerDiarizationConfig(
         segmentation=so.OfflineSpeakerSegmentationModelConfig(
             pyannote=so.OfflineSpeakerSegmentationPyannoteModelConfig(model=str(d / SEG_MODEL)),
+            num_threads=THREADS,
         ),
-        embedding=so.SpeakerEmbeddingExtractorConfig(model=str(d / EMB_MODEL)),
+        embedding=so.SpeakerEmbeddingExtractorConfig(model=str(d / EMB_MODEL), num_threads=THREADS),
         clustering=so.FastClusteringConfig(num_clusters=num_clusters, threshold=0.6),
         min_duration_on=0.3,
         min_duration_off=0.5,
@@ -57,7 +64,7 @@ def refine_by_sentence(samples: np.ndarray, words, speakers: list[int],
     import sherpa_onnx as so
 
     ex = so.SpeakerEmbeddingExtractor(
-        so.SpeakerEmbeddingExtractorConfig(model=str(models_dir() / EMB_MODEL)))
+        so.SpeakerEmbeddingExtractorConfig(model=str(models_dir() / EMB_MODEL), num_threads=THREADS))
     sents = [(i, j) for i, j in sentences(words) if words[j - 1].end - words[i].start >= MIN_SENT]
     embs, labels = [], []
     for n, (i, j) in enumerate(sents):
