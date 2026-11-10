@@ -50,6 +50,31 @@ MERGE_SCHEMA = _obj(
     score=_obj(decisions=_I, focus=_I, repetition=_I, comment=_S, tips=_cap(_S, 3)),
 )
 
+
+def merge_schema(n: int) -> dict:
+    """Exactly one people entry per speaker, so nobody is skipped."""
+    people = {**MERGE_SCHEMA["properties"]["people"], "minItems": max(1, n), "maxItems": max(1, n)}
+    return {**MERGE_SCHEMA, "properties": {**MERGE_SCHEMA["properties"], "people": people}}
+
+
+QUESTIONS_SCHEMA = _obj(results=_cap(_obj(line=_I, answered={"type": "boolean"}), 12))
+QUESTIONS_PROMPT = {
+    "tr": """Aşağıda bir toplantıdan sorular ve her sorudan hemen sonra konuşulan satırlar var.
+Her soru için karar ver: sonraki satırlarda biri bu soruya net bir cevap verdi mi?
+- answered = true: cevap verildi, ya da bu aslında bir soru değil (laf arası, onay isteme, görev verme).
+- answered = false: gerçek bir soru ve cevapsız kaldı, geçiştirildi ya da "sonra bakarız" dendi.
+line = sorunun satır numarası.
+
+{blocks}""",
+    "en": """Below are questions from a meeting, each followed by the lines spoken right after it.
+Decide for each: did someone clearly answer it in the following lines?
+- answered = true: it was answered, or it is not really a question (filler, asking for agreement, giving a task).
+- answered = false: a real question that stayed unanswered, was brushed aside or postponed.
+line = the line number of the question.
+
+{blocks}""",
+}
+
 # ---------------- prompts ----------------
 SYSTEM = {
     "tr": ("Sen bir toplantı analiz asistanısın. Yalnızca verilen konuşma dökümüne dayan; "
@@ -66,7 +91,7 @@ NOTES_PROMPT = {
 - topics: bu bölümde konuşulan konular (title kısa, summary 1 cümle, line: konunun başladığı satır no)
 - decisions: net verilen kararlar (text, line)
 - tasks: üstlenilen işler (owner: işi alan kişinin adı tam olarak dökümdeki gibi, bilinmiyorsa ""; task; due: söylenen tarih/süre, yoksa ""; line)
-- questions: sorulan sorular (asker: soran kişinin adı; text; answered: bu bölümde cevaplandı mı; line)
+- questions: yalnızca önemli, gerçek sorular (laf arası "değil mi?", "tamam mı?" gibi olanları yazma). asker: soran kişinin adı; text: sorunun kendisi, kısa; answered: sonraki satırlarda biri net bir cevap verdiyse true, soru geçiştirildiyse ya da "sonra bakarız" dendiyse false; line
 - people: bu bölümde konuşan herkes için did (ne katkı yaptı) ve got (bu bölümden ne aldı: aldığı cevaplar, netleşen şeyler ya da hiçbir şey; yoksa "")
 
 Yalnızca dökümde geçenleri yaz. Emin değilsen listeyi boş bırak.
@@ -79,7 +104,7 @@ Extract:
 - topics: what was discussed in this part (title short, summary 1 sentence, line: the line where the topic starts)
 - decisions: decisions that were clearly made (text, line)
 - tasks: work someone took on (owner: the person's name exactly as written in the transcript, "" if unknown; task; due: the date/time said, "" if none; line)
-- questions: questions that were asked (asker: name of who asked; text; answered: whether it was answered in this part; line)
+- questions: only real, important questions (skip fillers like "right?" or "ok?"). asker: name of who asked; text: the question itself, short; answered: true if someone gave a clear answer in the following lines, false if it was brushed aside or postponed; line
 - people: for everyone who speaks in this part, did (what they contributed) and got (what they took away from this part: answers they got, things clarified, or nothing; "" if none)
 
 Write only what appears in the transcript. When unsure, leave the list empty.
@@ -91,7 +116,7 @@ MERGE_PROMPT = {
     "tr": """Aşağıda bir toplantının bölüm notları (JSON) ve kesin istatistikleri var. Toplantının genel analizini yaz.
 
 - summary: 3-6 cümlelik özet
-- people: her konuşmacı için tam olarak bir kayıt. contribution: toplantıya ne kattığı, 1-2 cümleyle (puan ya da tek kelime değil). gained: bu kişinin toplantıdan ne aldığı (aldığı cevaplar, netleşen şeyler ya da hiçbir şey). evidence: bunu gösteren satır numaraları
+- people: her konuşmacı için tam olarak bir kayıt. contribution: toplantıya ne kattığı, 1-2 cümleyle (puan ya da tek kelime değil). gained: bu kişinin kendisi için toplantıdan ne aldığı (sorduğu sorulara aldığı cevaplar, onun için netleşen şeyler, üstüne aldığı işler; sorusu cevapsız kaldıysa bunu yaz). Her kişi için farklı ve o kişiye özel yaz, aynı cümleyi tekrarlama. evidence: bunu gösteren satır numaraları
 - score: decisions (kararlar ne kadar net, 0-100), focus (konuda kalma, 0-100), repetition (tekrarın azlığı, 100 = hiç tekrar yok), comment (1-2 cümle), tips (en çok 3 kısa öneri)
 
 Yalnızca notlara dayan. Adları notlardaki gibi yaz.
@@ -106,7 +131,7 @@ Notlar:
     "en": """Below are the part notes (JSON) of a meeting and its exact statistics. Write the overall analysis.
 
 - summary: 3-6 sentences
-- people: exactly one entry per speaker. contribution: what they added to the meeting, in 1-2 sentences (not a rating or a single word). gained: what this person took away from the meeting (answers they got, things clarified, or nothing). evidence: line numbers that show it
+- people: exactly one entry per speaker. contribution: what they added to the meeting, in 1-2 sentences (not a rating or a single word). gained: what this person personally took away (answers to their own questions, what became clear for them, work they took on; say so if their question stayed unanswered). Write it specifically for each person, never the same sentence twice. evidence: line numbers that show it
 - score: decisions (how clear the decisions are, 0-100), focus (staying on topic, 0-100), repetition (how little repetition, 100 = none), comment (1-2 sentences), tips (at most 3 short tips)
 
 Rely only on the notes. Write names as in the notes.
@@ -268,8 +293,35 @@ def _dedupe(items: list[dict], key: str) -> list[dict]:
     return out
 
 
-def postprocess(raw: dict, segments: list[dict], st: dict, names: dict[str, int]) -> dict:
-    """Repair what small models get wrong: bad line ids, names, scores, missing people."""
+def _echo(text: str, templates: str) -> bool:
+    """A small model sometimes copies the instruction instead of answering it."""
+    n = _norm(text)
+    return len(n) >= 8 and n in templates
+
+
+def _from_notes(notes: list[dict], names: dict[str, int], valid: set[int], key: str, templates: str) -> dict[int, str]:
+    """Per speaker, what the part notes say (did / got): used when the final call left a card empty."""
+    out: dict[int, list[str]] = {}
+    for n in notes:
+        for p in (n.get("people") or []) if isinstance(n, dict) else []:
+            spk = _to_id(p.get("name"), names, valid) if isinstance(p, dict) else None
+            t = str(p.get(key, "")).strip() if spk is not None else ""
+            if t and not _echo(t, templates) and t not in out.setdefault(spk, []):
+                out[spk].append(t)
+    return {k: " ".join(v[:4]) for k, v in out.items()}
+
+
+def postprocess(raw: dict, segments: list[dict], st: dict, names: dict[str, int],
+                notes: list[dict] | None = None, lang: str = "en") -> dict:
+    """Repair what small models get wrong: bad line ids, names, scores, missing people, echoed instructions."""
+    templates = _norm(" ".join((NOTES_PROMPT[lang], MERGE_PROMPT[lang], QUESTIONS_PROMPT[lang], SYSTEM[lang])))
+
+    def clean(v) -> str:
+        v = str(v or "").strip()
+        return "" if _echo(v, templates) else v
+
+    for key, field in (("decisions", "text"), ("tasks", "task"), ("open_questions", "text"), ("topics", "title")):
+        raw = {**raw, key: [r for r in (raw.get(key) or []) if isinstance(r, dict) and clean(r.get(field))]}
     by_id = {s["id"]: s for s in segments}
     ids = set(by_id)
     valid = {d["id"] for d in st["speakers"]}
@@ -312,19 +364,22 @@ def postprocess(raw: dict, segments: list[dict], st: dict, names: dict[str, int]
         spk = _to_id(p.get("name"), names, valid)
         if spk is not None and spk not in found:
             found[spk] = p
+    did = _from_notes(notes or [], names, valid, "did", templates)
+    got = _from_notes(notes or [], names, valid, "got", templates)
     people = []
     for d in st["speakers"]:
         p = found.get(d["id"], {})
-        people.append({"id": d["id"], "contribution": str(p.get("contribution", "")).strip(),
-                       "gained": str(p.get("gained", "")).strip(), "evidence": _ints(p.get("evidence"), ids)})
+        people.append({"id": d["id"], "contribution": clean(p.get("contribution")) or did.get(d["id"], ""),
+                       "gained": clean(p.get("gained")) or got.get(d["id"], ""),
+                       "evidence": _ints(p.get("evidence"), ids)})
 
     sc = raw.get("score") if isinstance(raw.get("score"), dict) else {}
     score = {"decisions": _clamp(sc.get("decisions")), "focus": _clamp(sc.get("focus")),
              "repetition": _clamp(sc.get("repetition")), "balance": round(st["balance"] * 100)}
     score["overall"] = round(sum(score[k] for k in ("decisions", "focus", "repetition", "balance")) / 4)
-    score["comment"] = str(sc.get("comment", "")).strip()
-    score["tips"] = [str(t).strip() for t in (sc.get("tips") or []) if str(t).strip()][:5]
-    return {"summary": str(raw.get("summary", "")).strip(), "topics": topics, "decisions": decisions,
+    score["comment"] = clean(sc.get("comment"))
+    score["tips"] = [clean(t) for t in (sc.get("tips") or []) if clean(t)][:5]
+    return {"summary": clean(raw.get("summary")), "topics": topics, "decisions": decisions,
             "tasks": tasks, "open_questions": oq, "people": people, "score": score}
 
 
@@ -351,9 +406,30 @@ def collect(notes: list[dict]) -> dict:
     return out
 
 
-def digest(notes: list[dict]) -> str:
+def verify_questions(open_qs: list[dict], segments: list[dict], speakers: dict, lang: str, call) -> list[dict]:
+    """Second look at each 'unanswered' question with the lines that follow it: the part notes
+    over-report them. Keeps a question when the check itself says nothing about it."""
+    order = {s["id"]: i for i, s in enumerate(segments)}
+    lines = render(segments, speakers)
+    cands = [q for q in open_qs if q.get("line") in order][:30]
+    verdict: dict[int, bool] = {}
+    for i in range(0, len(cands), 10):
+        blocks = []
+        for q in cands[i:i + 10]:
+            k = order[q["line"]]
+            blocks.append("\n".join(lines[k:k + 7]))
+        out = call(QUESTIONS_PROMPT[lang].format(blocks="\n\n---\n\n".join(blocks)), QUESTIONS_SCHEMA, max_tokens=600)
+        for r in (out.get("results") if isinstance(out, dict) else None) or []:
+            if isinstance(r, dict) and isinstance(r.get("answered"), bool):
+                verdict[r.get("line")] = r["answered"]
+    return [q for q in open_qs if not verdict.get(q.get("line"), False)]
+
+
+def digest(notes: list[dict], open_qs: list[dict] | None = None) -> str:
     """What the final call reads. Shortened when a long meeting would not fit."""
     c = collect(notes)
+    if open_qs is not None:
+        c["open_questions"] = open_qs
 
     def build(cut):
         d = {"topics": [t.get("title", "") + (": " + str(t.get("summary", ""))[:cut] if cut else "") for t in c["topics"]],
@@ -435,7 +511,7 @@ def _run(job_id: str, cancel, generate, t0: float) -> None:
 
     st = stats(segments, speakers)
     chunks = chunk_lines(render(segments, speakers))
-    total = len(chunks) + 1  # notes parts + final call
+    total = len(chunks) + 2  # notes parts + question check + final call
     _set(job_id, stage="notes", parts=len(chunks), progress=0.0)
 
     notes = []
@@ -459,14 +535,22 @@ def _run(job_id: str, cancel, generate, t0: float) -> None:
         _set(job_id, part=i + 1, progress=round((i + 1) / total, 3))
 
     _set(job_id, stage="merge")
+    found = collect(notes)
+    try:
+        found["open_questions"] = verify_questions(found["open_questions"], segments, speakers, LANG, call)
+    except Exception as e:
+        if _is_cancel(e):
+            raise
+        traceback.print_exc()  # keep the unchecked list
+    _set(job_id, progress=round((len(chunks) + 1) / total, 3))
     shown = ", ".join(sp["name"] for sp in st["speakers"])
     merge_stats = {"duration": st["duration"], "balance": st["balance"],
                    "speakers": [{k: sp[k] for k in ("name", "share", "turns", "words", "questions")}
                                 for sp in st["speakers"]]}
-    raw = call(MERGE_PROMPT[LANG].format(names=shown, stats=_compact(merge_stats), notes=digest(notes)),
-               MERGE_SCHEMA)
+    raw = call(MERGE_PROMPT[LANG].format(names=shown, stats=_compact(merge_stats), notes=digest(notes, found["open_questions"])),
+               merge_schema(len(st["speakers"])))
     names_map = _name_map(speakers, job.get("speakers") or {})
-    result = postprocess({**(raw if isinstance(raw, dict) else {}), **collect(notes)}, segments, st, names_map)
+    result = postprocess({**(raw if isinstance(raw, dict) else {}), **found}, segments, st, names_map, notes, LANG)
 
     model = device = ""
     try:

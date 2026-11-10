@@ -51,12 +51,12 @@ class Fake:
 
     def __call__(self, prompt, schema=None, **kw):
         self.calls.append((prompt, schema, kw))
-        if schema is analysis.MERGE_SCHEMA:
+        if "summary" in (schema or {}).get("properties", {}):
             return self.merge if self.merge is not None else {"summary": "ozet"}
         return self.notes if self.notes is not None else {"topics": [], "decisions": []}
 
     def count(self, schema):
-        return sum(1 for c in self.calls if c[1] is schema)
+        return sum(1 for c in self.calls if c[1] and c[1]["properties"].keys() == schema["properties"].keys())
 
 
 # ---------- stats ----------
@@ -293,3 +293,33 @@ def test_mark_interrupted_cancels_leftover_analysis():
     store.update_job(jid, analysis={"state": "running", "stage": "notes"})
     store.mark_interrupted()
     assert store.read_transcript(jid)["analysis"]["state"] == "cancelled"
+
+
+def test_verify_questions_drops_answered_and_keeps_unknown():
+    segs = hand_made()
+    qs = [{"asker": "Ali", "text": "Başlayalım mı?", "line": 1}, {"asker": "Ali", "text": "Kim yapacak?", "line": 4},
+          {"asker": "Ali", "text": "?", "line": 2}]
+    seen = []
+
+    def call(prompt, schema, max_tokens=0):
+        seen.append(prompt)
+        return {"results": [{"line": 1, "answered": True}, {"line": 4, "answered": False}]}
+
+    out = analysis.verify_questions(qs, segs, {"0": "Ali", "1": "Veli"}, "tr", call)
+    assert [q["line"] for q in out] == [4, 2] and "[5]" in seen[0]
+    assert analysis.merge_schema(3)["properties"]["people"]["minItems"] == 3
+
+
+def test_echoed_instructions_are_dropped_and_people_filled_from_notes():
+    segs = hand_made()
+    st = analysis.stats(segs, {"0": "Ali", "1": "Veli"})
+    names = analysis._name_map({"0": "Ali", "1": "Veli"})
+    notes = [{"people": [{"name": "Veli", "did": "İşi üstlendi.", "got": "Planı öğrendi."}]}]
+    raw = {"summary": "ozet", "decisions": [{"text": "Emin değilsen listeyi boş bırak.", "line": 2}, {"text": "Plan yapıldı", "line": 2}],
+           "people": [{"name": "Ali", "contribution": "toplantıya ne kattığı, 1-2 cümleyle", "gained": "Bir şey", "evidence": []}],
+           "score": {"decisions": 50, "focus": 50, "repetition": 50, "comment": "1-2 cümle", "tips": ["en çok 3 kısa öneri", "Kısa tutun"]}}
+    r = analysis.postprocess(raw, segs, st, names, notes, "tr")
+    assert [d["text"] for d in r["decisions"]] == ["Plan yapıldı"]
+    assert r["people"][0]["contribution"] == "" and r["people"][0]["gained"] == "Bir şey"
+    assert r["people"][1]["contribution"] == "İşi üstlendi." and r["people"][1]["gained"] == "Planı öğrendi."
+    assert r["score"]["comment"] == "" and r["score"]["tips"] == ["Kısa tutun"]
