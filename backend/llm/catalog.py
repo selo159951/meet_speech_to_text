@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .. import models
 
-DEFAULT_SMALL = "gemma-3-4b"
+DEFAULT_SMALL = "qwen3.5-4b"  # measured: best names and tasks of the small ones (docs/toplanti-modu-rapor.md)
 DEFAULT_LARGE = "gemma-4-12b"
 
 GB = 1024 ** 3
@@ -80,7 +80,11 @@ def recommend(hw: dict) -> str:
 def fit(name: str, hw: dict) -> str:
     need = get(name)["need_gb"]
     mem = memory_gb(hw)
-    return "ok" if mem >= need + 1.0 else "tight" if mem >= need else "no"
+    if mem >= need + 1.0:
+        return "ok"
+    ram = float(hw.get("ram", {}).get("total_gb") or 0)
+    # too big for the card but enough RAM: it still runs, on the processor (slower)
+    return "tight" if mem >= need or ram >= need + 4 else "no"
 
 
 def get_setting() -> str:

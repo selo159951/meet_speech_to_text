@@ -84,7 +84,8 @@ def test_catalog_recommend_fit():
     assert catalog.recommend(hw()) == catalog.DEFAULT_SMALL
     assert catalog.fit("gemma-3-4b", hw(small)) == "ok"
     assert catalog.fit("gemma-4-e4b", hw(small)) == "tight"
-    assert catalog.fit("gemma-4-12b", hw(small)) == "no"
+    assert catalog.fit("gemma-4-12b", hw(small)) == "tight"  # not on the card, but 16 GB RAM: runs on the CPU
+    assert catalog.fit("gemma-4-12b", hw(small, ram=8)) == "no"
     assert catalog.fit("gemma-4-12b", hw(ram=32)) == "ok"  # CPU: system RAM
     m = catalog.get("qwen3.5-9b")
     assert m["url"] == "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf"
@@ -93,14 +94,14 @@ def test_catalog_recommend_fit():
 def test_active(tmp_path):
     h = hw(gpu("RTX 1000", 6))
     assert catalog.active(h) is None
-    fake_model("qwen3.5-4b", tmp_path)
-    assert catalog.active(h) == "qwen3.5-4b"  # any downloaded
     fake_model("gemma-3-4b", tmp_path)
-    assert catalog.active(h) == "gemma-3-4b"  # recommended
-    catalog.set_setting("qwen3.5-4b")
-    assert catalog.active(h) == "qwen3.5-4b"  # setting
+    assert catalog.active(h) == "gemma-3-4b"  # any downloaded
+    fake_model("qwen3.5-4b", tmp_path)
+    assert catalog.active(h) == "qwen3.5-4b"  # recommended
+    catalog.set_setting("gemma-3-4b")
+    assert catalog.active(h) == "gemma-3-4b"  # setting
     catalog.set_setting("gemma-4-12b")  # not downloaded -> falls back
-    assert catalog.active(h) == "gemma-3-4b"
+    assert catalog.active(h) == "qwen3.5-4b"
     assert llm.available() is False  # no binary
 
 
