@@ -1,7 +1,11 @@
-"""Meeting Transcriber - desktop app (no web server, no open ports)."""
+"""Kâtip - desktop app (no web server, no open ports)."""
 import sys
 
 from backend import store
+
+# One-time: copy an existing %APPDATA%\MeetTranscriber folder to %APPDATA%\Katip.
+# Runs before data_dir() is used (also before the log file is opened below).
+store.migrate_old_data()
 
 # pythonw / windowed .exe have no console: send output to a log file instead of None.
 if sys.stdout is None or sys.stderr is None:
@@ -15,7 +19,7 @@ def _fatal(msg: str) -> None:
     if sys.platform == "win32":
         import ctypes
 
-        ctypes.windll.user32.MessageBoxW(None, msg, "Meeting Transcriber", 0x10)
+        ctypes.windll.user32.MessageBoxW(None, msg, "Kâtip", 0x10)
 
 
 def main():
@@ -27,11 +31,11 @@ def main():
     except Exception as e:  # missing runtime pieces
         return _fatal(f"The app could not start:\n{e}")
 
-    store.mark_interrupted()  # jobs cut off by closing the app can be resumed
+    store.mark_interrupted()  # jobs cut off by closing the app can be resumed (after migrate_old_data)
     if sys.platform == "win32":
         install_virtual_hosts()
     api = Api()
-    window = webview.create_window("Meeting Transcriber", START_URL, width=1180, height=820,
+    window = webview.create_window("Kâtip", START_URL, width=1180, height=820,
                                    min_size=(720, 560), js_api=api)
     api._get_window = lambda: window
     attached = []

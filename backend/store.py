@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import threading
@@ -10,18 +11,38 @@ import uuid
 from pathlib import Path
 
 _lock = threading.RLock()  # re-entrant: update_job holds it across read + write
+_log = logging.getLogger(__name__)
 
 
 def data_dir() -> Path:
-    override = os.environ.get("MEETTRANSCRIBER_HOME")
-    if override:
+    override = os.environ.get("KATIP_HOME") or os.environ.get("MEETTRANSCRIBER_HOME")
+    if override:  # MEETTRANSCRIBER_HOME is kept so existing tests and scripts work
         base = Path(override)
     elif os.name == "nt":
-        base = Path(os.environ.get("APPDATA", Path.home())) / "MeetTranscriber"
+        base = Path(os.environ.get("APPDATA", Path.home())) / "Katip"
     else:
-        base = Path.home() / ".local" / "share" / "MeetTranscriber"
+        base = Path.home() / ".local" / "share" / "Katip"
     base.mkdir(parents=True, exist_ok=True)
     return base
+
+
+def migrate_old_data() -> bool:
+    """Copy %APPDATA%\\MeetTranscriber to %APPDATA%\\Katip once (old folder untouched)."""
+    if os.environ.get("KATIP_HOME") or os.environ.get("MEETTRANSCRIBER_HOME"):
+        return False
+    appdata = Path(os.environ.get("APPDATA", Path.home()))
+    new, old, tmp = appdata / "Katip", appdata / "MeetTranscriber", appdata / "Katip.tmp"
+    if new.exists() or not old.exists():
+        return False
+    try:
+        if tmp.exists():  # leftover from an interrupted copy
+            shutil.rmtree(tmp)
+        shutil.copytree(old, tmp, ignore=shutil.ignore_patterns("webview"))
+        tmp.rename(new)
+        return True
+    except Exception:
+        _log.exception("could not copy the old MeetTranscriber data folder")
+        return False
 
 
 def jobs_dir() -> Path:

@@ -1,12 +1,12 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-title Meeting Transcriber
+title Katip
 
 if exist ".venv\Scripts\pythonw.exe" goto run
 
 echo ================================================
-echo  Meeting Transcriber - ilk kurulum (bir kez)
+echo  Katip - ilk kurulum (bir kez)
 echo ================================================
 where py >nul 2>&1 || (
   echo Python bulunamadi. Lutfen https://www.python.org/downloads/ adresinden

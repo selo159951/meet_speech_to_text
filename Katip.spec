@@ -28,6 +28,6 @@ a = Analysis(
     excludes=["nvidia", "tkinter", "matplotlib", "pytest", "IPython"],
 )
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="MeetTranscriber",
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Katip",
           console=False, icon=None)
-coll = COLLECT(exe, a.binaries, a.datas, name="MeetTranscriber")
+coll = COLLECT(exe, a.binaries, a.datas, name="Katip")
