@@ -138,7 +138,7 @@ def test_parts_reused_and_redone_when_text_changes(monkeypatch):
 
 def test_two_level_merge(monkeypatch):
     monkeypatch.setattr(analysis, "CHUNK_TOKENS", 20)
-    monkeypatch.setattr(analysis, "MERGE_TOKENS", 55)
+    monkeypatch.setattr(analysis, "MERGE_TOKENS", 70)
     segs = [seg(i, 0, i, i + 1, "bu bir deneme cümlesi numara %d" % i) for i in range(1, 7)]
     jid = make_job(segs)
     fake = Fake(notes={"topics": [{"title": "t" * 40, "summary": "", "line": 1}]})
