@@ -60,9 +60,10 @@
     <details class="menu"><summary data-i18n="export"></summary>
       <div>
         <label><span data-i18n="version"></span>
-          <select id="expVersion"><option value="edited" data-i18n="edited"></option><option value="original" data-i18n="original"></option><option value="both" data-i18n="both"></option></select></label>
+          <select id="expVersion"><option value="edited" data-i18n="edited"></option><option value="original" data-i18n="original"></option><option value="both" data-i18n="both"></option><option value="analysis" data-i18n="export_analysis"></option></select></label>
         <label><span data-i18n="format"></span>
           <select id="expFmt"><option value="docx">Word (.docx)</option><option value="txt">TXT</option><option value="md">Markdown</option><option value="srt" data-i18n="srt"></option><option value="json">JSON</option></select></label>
+        <div id="expAnalysisHint" class="hint" data-i18n="export_analysis_hint" hidden></div>
         <button id="expGo" data-i18n="save_as"></button>
       </div>
     </details>

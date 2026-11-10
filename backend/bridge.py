@@ -172,13 +172,39 @@ class Api(SystemApi, LlmApi):
 
     def save_export(self, job_id: str, version: str, fmt: str, lang: str = "en") -> dict:
         """Ask where to save, write the file(s). Returns {"paths": [...]} or {"cancelled": True}."""
+        import json
+
         import webview
 
-        if fmt not in EXPORT_TYPES or version not in ("original", "edited", "both"):
+        if fmt not in EXPORT_TYPES or version not in ("original", "edited", "both", "analysis"):
             return {"error": "bad format"}
         data = _job(job_id)
         stem = Path(data["filename"]).stem
         win = self._window()
+
+        if version == "analysis":  # a meeting analysis has no subtitles
+            if fmt not in ("md", "txt", "docx", "json"):
+                return {"error": "bad format"}
+            path = store.job_path(job_id) / "analysis.json"
+            if not path.exists():
+                raise ValueError("this recording has no finished analysis yet")
+            try:
+                analysis = json.loads(path.read_text("utf-8"))
+            except (OSError, ValueError):
+                raise ValueError("the analysis file could not be read") from None
+            suffix = "analiz" if lang == "tr" else "analysis"
+            chosen = _first(win.create_file_dialog(
+                webview.FileDialog.SAVE, directory=self._last_dir(),
+                save_filename=f"{stem} - {suffix}.{fmt}", file_types=(EXPORT_TYPES[fmt],)))
+            if not chosen:
+                return {"cancelled": True}
+            target = Path(chosen)
+            if target.suffix.lower() != f".{fmt}":
+                target = target.with_name(target.name + f".{fmt}")
+            _write(target, export.render_analysis(data, analysis, fmt, lang))
+            self._remember_dir("export_dir", str(target.parent))
+            return {"paths": [str(target)]}
+
         versions = ["original", "edited"] if version == "both" else [version]
         if len(versions) == 1:
             path = _first(win.create_file_dialog(

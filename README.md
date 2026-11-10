@@ -3,6 +3,8 @@
 Turns meeting recordings (40–80 min and longer) into an editable transcript with time ranges and speaker names. It is a **desktop app**: everything runs offline on the PC, no audio leaves the computer, and no network port is opened. The interface is in Turkish and English.
 
 > **TR:** Toplantı kayıtlarını konuşmacılarıyla birlikte düzenlenebilir metne dönüştüren masaüstü uygulaması. Tamamen çevrimdışı çalışır. `Katip.zip`'i açıp `Katip.exe`'ye çift tıklayın.
+>
+> **Toplantı modu:** Metinden özet, konular, kararlar, görevler ve açık sorular çıkarılır; konuşmacı başına katkı ve toplantı puanı gösterilir. Tamamen çevrimdışı çalışır (llama.cpp; Vulkan destekli ekran kartı veya CPU), model Sistem sayfasından bir kez indirilir.
 
 ## Features
 - Drag & drop any audio/video file (mp3, wav, m4a, mp4, ogg…); progress with remaining-time estimate
@@ -14,6 +16,20 @@ Turns meeting recordings (40–80 min and longer) into an editable transcript wi
 - Add / remove / rename / merge speakers and lines, Undo (Ctrl+Z), search, replace, filters
 - **System page**: graphics card, video memory, CPU, RAM, whether the PC is suitable, speed test ("1 min of audio ≈ X s"), engine and model choice
 - Export **Original**, **Edited** or **Both** as Word / TXT / Markdown / SRT / JSON
+- Export the **Analysis** as Word / TXT / Markdown / JSON
+
+## Meeting mode (local AI analysis)
+After the transcript is ready (or on demand from the **Analysis** tab), the app reads the meeting on the PC and produces:
+- a short **summary** and the **topics** discussed, with their time ranges
+- **decisions**, **tasks** (with owner and due date where the meeting says so) and **open questions**
+- **per-person contribution**: talk time, turns, words and questions, what each person contributed and what they took away
+- a **meeting score** (overall plus decisions, focus, repetition and balance) with short tips
+
+Everything runs fully offline through **llama.cpp**: it uses the graphics card over Vulkan when there is one and the CPU otherwise. There is no Ollama and no local server. The model is downloaded once from the **System** page; after that no network connection is needed.
+
+Names are assigned in this order: a saved voice match from the People page wins; otherwise a name is applied automatically when the rule-based "ben Selim / my name is…" detection and the model agree; a name found by only one of them is shown as a suggestion instead.
+
+Small models make mistakes: the summary and every listed item are a best guess, but each one links to the transcript line it came from in the app, so it can be checked against the recording.
 
 ## Graphics cards
 | Card | Engine | Notes |
@@ -39,6 +55,7 @@ Measured on a laptop with an RTX 1000 Ada (6 GB) and a 22-core Core Ultra 7, `la
 ## Windows .exe (no Python needed)
 ```powershell
 .\tools\build_whispercpp.ps1   # once: builds whisper.cpp with Vulkan into vendor\whispercpp
+.\tools\build_llamacpp.ps1     # once: builds llama.cpp with Vulkan into vendor\llamacpp (meeting mode)
 .\build_windows.ps1            # dist\Katip.zip         (CPU + Vulkan: any PC)
 .\build_windows.ps1 -Gpu       # also dist\Katip-NVIDIA.zip (adds CUDA, fastest on NVIDIA)
 ```
