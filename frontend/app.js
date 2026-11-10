@@ -163,7 +163,7 @@ async function openJob(id) {
 function applyJob(j) {
   job = j; dirty = {}; segSpk = {}; spkNames = { ...j.speakers };
   for (const s of job.segments) spkNames[s.speaker] ??= `Speaker ${s.speaker + 1}`;
-  renderSpeakers(); renderSegs();
+  renderSpeakers(); renderSegs(); updateExportOptions();
 }
 
 const spkIds = () => Object.keys(spkNames).map(Number).sort((a, b) => a - b);
@@ -492,6 +492,20 @@ $("fwd").onclick = () => (audio.currentTime += 5);
 $("speed").onchange = (e) => (audio.playbackRate = +e.target.value);
 
 /* ================= export ================= */
+/* "Analysis" is only offered when the job has a finished analysis; SRT makes no sense for it. */
+function updateExportOptions() {
+  const anOpt = $("expVersion").querySelector('option[value="analysis"]');
+  const ready = job?.analysis?.state === "done";
+  anOpt.disabled = !ready;
+  anOpt.title = ready ? "" : t("export_analysis_hint");
+  $("expAnalysisHint").hidden = ready;
+  if (!ready && $("expVersion").value === "analysis") $("expVersion").value = "edited";
+  const isAnalysis = $("expVersion").value === "analysis";
+  const srt = $("expFmt").querySelector('option[value="srt"]');
+  srt.disabled = isAnalysis;
+  if (isAnalysis && $("expFmt").value === "srt") $("expFmt").value = "docx";
+}
+$("expVersion").onchange = updateExportOptions;
 $("expGo").onclick = async () => {
   await save();
   const v = $("expVersion").value, f = $("expFmt").value;
@@ -519,7 +533,7 @@ function setLang(l, persist = true) {
   $("langSel").value = LANG;
   applyI18n(); renderCredits();
   if (gpuState) showGpu(gpuState);
-  if (job && !$("view").hidden) { renderSpeakers(); renderSegs(); } else loadJobs();
+  if (job && !$("view").hidden) { renderSpeakers(); renderSegs(); updateExportOptions(); } else loadJobs();
   if (persist) call("set_settings", { ui_lang: LANG }).catch(() => {});
 }
 $("langSel").onchange = (e) => setLang(e.target.value);
