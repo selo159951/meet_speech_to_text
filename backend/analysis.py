@@ -22,6 +22,7 @@ VERSION = 1
 
 # ---------------- schemas ----------------
 _S, _I, _N = {"type": "string"}, {"type": "integer"}, {"type": "number"}
+_T = {"type": "string", "minLength": 20}  # a sentence, not a one-word rating
 
 
 def _obj(**props):
@@ -33,7 +34,7 @@ def _arr(item):
 
 
 NOTES_SCHEMA = _obj(
-    topics=_arr(_obj(title=_S, summary=_S, line=_I)),
+    topics={**_arr(_obj(title=_S, summary=_S, line=_I)), "minItems": 1},
     decisions=_arr(_obj(text=_S, line=_I)),
     tasks=_arr(_obj(owner=_S, task=_S, due=_S, line=_I)),
     questions=_arr(_obj(asker=_S, text=_S, answered={"type": "boolean"}, line=_I)),
@@ -41,11 +42,7 @@ NOTES_SCHEMA = _obj(
 )
 MERGE_SCHEMA = _obj(
     summary=_S,
-    topics=_arr(_obj(title=_S, summary=_S, line=_I)),
-    decisions=_arr(_obj(text=_S, line=_I)),
-    tasks=_arr(_obj(owner=_S, task=_S, due=_S, line=_I)),
-    open_questions=_arr(_obj(asker=_S, text=_S, line=_I)),
-    people=_arr(_obj(name=_S, contribution=_S, gained=_S, evidence=_arr(_I))),
+    people={**_arr(_obj(name=_S, contribution=_T, gained=_T, evidence=_arr(_I))), "minItems": 1},
     score=_obj(decisions=_I, focus=_I, repetition=_I, comment=_S, tips=_arr(_S)),
 )
 
@@ -86,25 +83,11 @@ Write only what appears in the transcript. When unsure, leave the list empty.
 Transcript:
 {transcript}""",
 }
-GROUP_PROMPT = {
-    "tr": """Aşağıda bir toplantının ardışık bölümlerinin notları (JSON) var. Bunları aynı biçimde tek bir not setinde birleştir:
-tekrar edenleri çıkar, satır numaralarını ve adları olduğu gibi koru, kısa yaz.
-
-Notlar:
-{notes}""",
-    "en": """Below are notes (JSON) of consecutive parts of a meeting. Combine them into one set of notes in the same format:
-remove repeats, keep line numbers and names as they are, write short.
-
-Notes:
-{notes}""",
-}
 MERGE_PROMPT = {
     "tr": """Aşağıda bir toplantının bölüm notları (JSON) ve kesin istatistikleri var. Toplantının genel analizini yaz.
 
 - summary: 3-6 cümlelik özet
-- topics, decisions, tasks: notlardan birleştir, tekrarları çıkar, line değerlerini notlardan al
-- open_questions: cevapsız kalan sorular (asker, text, line)
-- people: her konuşmacı için tam olarak bir kayıt. contribution: toplantıya katkısı. gained: bu kişinin toplantıdan ne aldığı (aldığı cevaplar, netleşen şeyler ya da hiçbir şey). evidence: bunu gösteren satır numaraları
+- people: her konuşmacı için tam olarak bir kayıt. contribution: toplantıya ne kattığı, 1-2 cümleyle (puan ya da tek kelime değil). gained: bu kişinin toplantıdan ne aldığı (aldığı cevaplar, netleşen şeyler ya da hiçbir şey). evidence: bunu gösteren satır numaraları
 - score: decisions (kararlar ne kadar net, 0-100), focus (konuda kalma, 0-100), repetition (tekrarın azlığı, 100 = hiç tekrar yok), comment (1-2 cümle), tips (en çok 3 kısa öneri)
 
 Yalnızca notlara dayan. Adları notlardaki gibi yaz.
@@ -119,9 +102,7 @@ Notlar:
     "en": """Below are the part notes (JSON) of a meeting and its exact statistics. Write the overall analysis.
 
 - summary: 3-6 sentences
-- topics, decisions, tasks: merge from the notes, drop repeats, take line values from the notes
-- open_questions: questions that stayed unanswered (asker, text, line)
-- people: exactly one entry per speaker. contribution: what they added to the meeting. gained: what this person took away from the meeting (answers they got, things clarified, or nothing). evidence: line numbers that show it
+- people: exactly one entry per speaker. contribution: what they added to the meeting, in 1-2 sentences (not a rating or a single word). gained: what this person took away from the meeting (answers they got, things clarified, or nothing). evidence: line numbers that show it
 - score: decisions (how clear the decisions are, 0-100), focus (staying on topic, 0-100), repetition (how little repetition, 100 = none), comment (1-2 sentences), tips (at most 3 short tips)
 
 Rely only on the notes. Write names as in the notes.
@@ -351,19 +332,37 @@ def _compact(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
 
 
-def _merge_notes(notes: list[dict], lang: str, call) -> list[dict]:
-    """Notes too long for one merge call: first combine groups of notes (same schema), then merge."""
-    groups, cur, size = [], [], 0
+def collect(notes: list[dict]) -> dict:
+    """Lists are taken from the part notes as they are: a small model drops rows when asked to copy them."""
+    out = {"topics": [], "decisions": [], "tasks": [], "open_questions": []}
     for n in notes:
-        t = _tokens(_compact(n))
-        if cur and size + t > MERGE_TOKENS:
-            groups.append(cur)
-            cur, size = [], 0
-        cur.append(n)
-        size += t
-    groups.append(cur)
-    return [call(GROUP_PROMPT[lang].format(notes=_compact(g)), NOTES_SCHEMA) if len(g) > 1 else g[0]
-            for g in groups]
+        if not isinstance(n, dict):
+            continue
+        for k in ("topics", "decisions", "tasks"):
+            out[k] += [r for r in (n.get(k) or []) if isinstance(r, dict)]
+        out["open_questions"] += [q for q in (n.get("questions") or [])
+                                  if isinstance(q, dict) and q.get("answered") is False]
+    return out
+
+
+def digest(notes: list[dict]) -> str:
+    """What the final call reads. Shortened when a long meeting would not fit."""
+    c = collect(notes)
+
+    def build(cut):
+        d = {"topics": [t.get("title", "") + (": " + str(t.get("summary", ""))[:cut] if cut else "") for t in c["topics"]],
+             "decisions": [[d.get("line"), d.get("text", "")] for d in c["decisions"]],
+             "tasks": [[t.get("line"), t.get("owner", ""), t.get("task", "")] for t in c["tasks"]],
+             "open_questions": [[q.get("line"), q.get("asker", ""), q.get("text", "")] for q in c["open_questions"]],
+             "people": [[p.get("name", ""), str(p.get("did", ""))[:cut or 80], str(p.get("got", ""))[:cut or 80]]
+                        for n in notes if isinstance(n, dict) for p in (n.get("people") or []) if isinstance(p, dict)]}
+        return _compact(d)
+
+    for cut in (400, 160, 0):
+        text = build(cut)
+        if _tokens(text) <= MERGE_TOKENS:
+            break
+    return text
 
 
 def run(job_id: str, cancel: threading.Event | None = None, generate=None) -> dict:
@@ -392,9 +391,9 @@ def _run(job_id: str, cancel, generate, t0: float) -> None:
         if cancel is not None and cancel.is_set():
             raise _Cancelled()
 
-    def call(prompt, schema, lang=None):
+    def call(prompt, schema, max_tokens=2048):
         check()
-        return generate(prompt, schema=schema, system=SYSTEM[lang or LANG], cancel=cancel)
+        return generate(prompt, schema=schema, system=SYSTEM[LANG], max_tokens=max_tokens, cancel=cancel)
 
     job = store.read_transcript(job_id)
     segments, speakers = job.get("segments") or [], dict(job.get("speakers") or {})
@@ -405,31 +404,6 @@ def _run(job_id: str, cancel, generate, t0: float) -> None:
     (ana_dir / "parts").mkdir(parents=True, exist_ok=True)
 
     _set(job_id, state="running", stage="stats", progress=0.0, part=0, parts=0, error="")
-    st = stats(segments, speakers)
-    chunks = chunk_lines(render(segments, speakers))
-    total = len(chunks) + 2  # notes parts + names + merge
-    _set(job_id, stage="notes", parts=len(chunks), progress=0.0)
-
-    notes = []
-    for i, ch in enumerate(chunks):
-        check()
-        text = "\n".join(ch)
-        h = hashlib.sha1((LANG + text).encode("utf-8")).hexdigest()
-        f = ana_dir / "parts" / f"{i}.json"
-        saved = None
-        if f.exists():
-            try:
-                saved = json.loads(f.read_text("utf-8"))
-            except ValueError:
-                pass
-        if saved and saved.get("hash") == h:
-            notes.append(saved["notes"])
-        else:
-            n = call(NOTES_PROMPT[LANG].format(transcript=text), NOTES_SCHEMA)
-            f.write_text(json.dumps({"hash": h, "notes": n}, ensure_ascii=False), "utf-8")
-            notes.append(n)
-        _set(job_id, part=i + 1, progress=round((i + 1) / total, 3))
-
     suggestions = []
     _set(job_id, stage="names")
     try:
@@ -452,21 +426,41 @@ def _run(job_id: str, cancel, generate, t0: float) -> None:
             raise
         traceback.print_exc()  # names are a bonus: the analysis goes on without them
     check()
-    _set(job_id, progress=round((len(chunks) + 1) / total, 3))
+
+    st = stats(segments, speakers)
+    chunks = chunk_lines(render(segments, speakers))
+    total = len(chunks) + 1  # notes parts + final call
+    _set(job_id, stage="notes", parts=len(chunks), progress=0.0)
+
+    notes = []
+    for i, ch in enumerate(chunks):
+        check()
+        text = "\n".join(ch)
+        h = hashlib.sha1((LANG + text).encode("utf-8")).hexdigest()
+        f = ana_dir / "parts" / f"{i}.json"
+        saved = None
+        if f.exists():
+            try:
+                saved = json.loads(f.read_text("utf-8"))
+            except ValueError:
+                pass
+        if saved and saved.get("hash") == h:
+            notes.append(saved["notes"])
+        else:
+            n = call(NOTES_PROMPT[LANG].format(transcript=text), NOTES_SCHEMA, max_tokens=3000)
+            f.write_text(json.dumps({"hash": h, "notes": n}, ensure_ascii=False), "utf-8")
+            notes.append(n)
+        _set(job_id, part=i + 1, progress=round((i + 1) / total, 3))
 
     _set(job_id, stage="merge")
-    for sp in st["speakers"]:  # names may have changed in the names stage
-        sp["name"] = speakers.get(str(sp["id"]), sp["name"])
-    if _tokens(_compact(notes)) > MERGE_TOKENS:
-        notes = _merge_notes(notes, LANG, call)
     shown = ", ".join(sp["name"] for sp in st["speakers"])
     merge_stats = {"duration": st["duration"], "balance": st["balance"],
                    "speakers": [{k: sp[k] for k in ("name", "share", "turns", "words", "questions")}
                                 for sp in st["speakers"]]}
-    raw = call(MERGE_PROMPT[LANG].format(names=shown, stats=_compact(merge_stats), notes=_compact(notes)),
+    raw = call(MERGE_PROMPT[LANG].format(names=shown, stats=_compact(merge_stats), notes=digest(notes)),
                MERGE_SCHEMA)
     names_map = _name_map(speakers, job.get("speakers") or {})
-    result = postprocess(raw if isinstance(raw, dict) else {}, segments, st, names_map)
+    result = postprocess({**(raw if isinstance(raw, dict) else {}), **collect(notes)}, segments, st, names_map)
 
     model = device = ""
     try:

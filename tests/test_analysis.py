@@ -136,21 +136,21 @@ def test_parts_reused_and_redone_when_text_changes(monkeypatch):
     assert 0 < f3.count(analysis.NOTES_SCHEMA) < parts
 
 
-def test_two_level_merge(monkeypatch):
-    monkeypatch.setattr(analysis, "CHUNK_TOKENS", 20)
-    monkeypatch.setattr(analysis, "MERGE_TOKENS", 70)
-    segs = [seg(i, 0, i, i + 1, "bu bir deneme cümlesi numara %d" % i) for i in range(1, 7)]
-    jid = make_job(segs)
-    fake = Fake(notes={"topics": [{"title": "t" * 40, "summary": "", "line": 1}]})
-    assert analysis.run(jid, generate=fake)["state"] == "done"
-    assert fake.calls[-1][1] is analysis.MERGE_SCHEMA
-    assert any("Combine them" in c[0] or "birleştir" in c[0] for c in fake.calls[:-1])
+def test_long_meeting_digest_is_shortened(monkeypatch):
+    notes = [{"topics": [{"title": "t", "summary": "s" * 500, "line": 1}], "decisions": [{"text": "d", "line": 1}],
+              "questions": [{"asker": "A", "text": "q1", "answered": False, "line": 1},
+                            {"asker": "A", "text": "q2", "answered": True, "line": 2}],
+              "people": [{"name": "A", "did": "x" * 500, "got": "y" * 500}]}] * 4
+    assert [q["text"] for q in analysis.collect(notes)["open_questions"]] == ["q1"] * 4
+    long = analysis.digest(notes)
+    monkeypatch.setattr(analysis, "MERGE_TOKENS", 200)
+    short = analysis.digest(notes)
+    assert len(short) < len(long) and '"d"' in short
 
 
 def test_postprocess():
     jid = make_job(hand_made(), {"0": "Ali", "1": "Veli"})
-    merge = {
-        "summary": " s ",
+    notes = {
         "topics": [{"title": "B", "summary": "", "line": 4}, {"title": "A", "summary": "x", "line": 1},
                    {"title": "bad", "summary": "", "line": 99}],
         "decisions": [{"text": "Plan.", "line": 2}, {"text": "plan", "line": 3}, {"text": "x", "line": 77}],
@@ -158,11 +158,15 @@ def test_postprocess():
                   {"owner": "Konuşmacı 1", "task": "Bak", "due": "", "line": 4},
                   {"owner": "Zeynep", "task": "Başka", "due": "", "line": 5},
                   {"owner": "Ali", "task": "Hatalı", "due": "", "line": 500}],
-        "open_questions": [{"asker": "Speaker 2", "text": "Ne zaman?", "line": 4}],
+        "questions": [{"asker": "Speaker 2", "text": "Ne zaman?", "answered": False, "line": 4},
+                      {"asker": "Ali", "text": "Başlayalım mı?", "answered": True, "line": 1}],
+    }
+    merge = {
+        "summary": " s ",
         "people": [{"name": "VELİ", "contribution": "c", "gained": "g", "evidence": [3, 999, 5]}],
         "score": {"decisions": 150, "focus": -5, "repetition": 60, "comment": "k", "tips": ["a", "b"]},
     }
-    a = analysis.run(jid, generate=Fake(merge=merge))
+    a = analysis.run(jid, generate=Fake(merge=merge, notes=notes))
     r = analysis.status(jid)["analysis"]
     assert a["state"] == "done"
     assert [t["line"] for t in r["topics"]] == [1, 4]
