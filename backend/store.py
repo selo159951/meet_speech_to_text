@@ -144,6 +144,8 @@ def list_jobs(q: str = "") -> list[dict]:
         names = [v for k, v in sorted(d.get("speakers", {}).items())
                  if any(s["speaker"] == int(k) for s in segs)]
         item = {k: d.get(k) for k in ("id", "filename", "created", "status", "duration", "language", "error")}
+        if d.get("analysis"):
+            item["analysis"] = {"state": d["analysis"].get("state")}
         item.update(speakers=names, lines=len(segs),
                     edited=sum(1 for s in segs if s["text_edited"] != s["text_original"]))
         if q:
