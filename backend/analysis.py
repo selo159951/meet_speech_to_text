@@ -291,6 +291,8 @@ def postprocess(raw: dict, segments: list[dict], st: dict, names: dict[str, int]
             topics.append({"title": str(t["title"]).strip(), "summary": str(t.get("summary", "")).strip(),
                            "start": by_id[ln]["start"], "end": 0.0, "line": ln})
     topics = sorted(_dedupe(topics, "title"), key=lambda t: t["start"])
+    if topics:  # the first topic covers the meeting from its start
+        topics[0]["start"] = min(x["start"] for x in segments)
     for i, t in enumerate(topics):
         t["end"] = topics[i + 1]["start"] if i + 1 < len(topics) else st["duration"]
 
