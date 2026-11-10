@@ -141,7 +141,7 @@ def build_command(p: dict, prompt_file: str, system_file: str | None, schema: di
     if p["device"] == "vulkan":
         cmd += ["-ngl", "999", "-dev", f"Vulkan{p['gpu_index']}"]
     else:
-        cmd += ["-ngl", "0"]
+        cmd += ["-ngl", "0", "-dev", "none"]  # really CPU: otherwise Vulkan still takes the prompt
     cmd += ["-c", str(ctx), "-n", str(max_tokens), "--temp", str(temperature), "--reasoning-budget", "0"]
     return cmd
 
