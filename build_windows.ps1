@@ -10,7 +10,7 @@ if (-not (Test-Path .venv)) { py -3.12 -m venv .venv }
 .\.venv\Scripts\python fetch_models.py
 if (-not (Test-Path vendor\whispercpp\whisper-cli.exe)) { Write-Warning "vendor\whispercpp missing: this build has no Vulkan (AMD/Intel) support" }
 .\.venv\Scripts\pyinstaller --noconfirm --clean Katip.spec
-Push-Location dist; tar.exe -a -c -f Katip.zip Katip; Pop-Location
+Push-Location dist; & "$env:SystemRoot\System32	ar.exe" -a -c -f Katip.zip Katip; Pop-Location
 
 if ($Gpu) {
     .\.venv\Scripts\pip install -q -r requirements-gpu.txt
@@ -26,6 +26,6 @@ if ($Gpu) {
             Copy-Item "$src\*.dll" $to
         }
     }
-    Push-Location dist; tar.exe -a -c -f Katip-NVIDIA.zip Katip-NVIDIA; Pop-Location  # big: tar, not Compress-Archive
+    Push-Location dist; & "$env:SystemRoot\System32	ar.exe" -a -c -f Katip-NVIDIA.zip Katip-NVIDIA; Pop-Location  # Windows' own tar writes real zip files (Git's tar.exe would not)
 }
 Write-Host "Done. Share the .zip files in dist\ (unzip, run Katip.exe)"
