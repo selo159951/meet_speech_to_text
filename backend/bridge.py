@@ -131,14 +131,35 @@ class Api(SystemApi):
 
     # ---------------- settings ----------------
     def get_settings(self) -> dict:
-        return asr.status()
+        return {**asr.status(), "meeting_mode": bool(asr.get_settings().get("meeting_mode", False))}
 
     def set_settings(self, values: dict) -> dict:
         if "use_gpu" in values:
             asr.set_use_gpu(bool(values["use_gpu"]))
         if values.get("ui_lang") in ("tr", "en"):
             asr.set_setting("ui_lang", values["ui_lang"])
-        return asr.status()
+        if "meeting_mode" in values:
+            asr.set_setting("meeting_mode", bool(values["meeting_mode"]))
+        return self.get_settings()
+
+    # ---------------- meeting analysis ----------------
+    def analyze_job(self, job_id: str) -> dict:
+        from . import analysis
+
+        _job(job_id)
+        return analysis.start(job_id)
+
+    def cancel_analysis(self, job_id: str) -> dict:
+        from . import analysis
+
+        _job(job_id)
+        return analysis.cancel(job_id)
+
+    def get_analysis(self, job_id: str) -> dict:
+        from . import analysis
+
+        _job(job_id)
+        return analysis.status(job_id)
 
     # ---------------- export & files ----------------
     def _last_dir(self, key: str = "export_dir") -> str:

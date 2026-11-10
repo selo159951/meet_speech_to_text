@@ -87,6 +87,12 @@ def mark_interrupted() -> list[str]:
         if j["status"] in ("running", "queued"):
             update_job(j["id"], status="interrupted", stage="interrupted")
             ids.append(j["id"])
+        try:
+            a = read_transcript(j["id"]).get("analysis") or {}
+            if a.get("state") in ("running", "queued"):
+                update_job(j["id"], analysis={**a, "state": "cancelled"})
+        except (OSError, ValueError):
+            pass
     return ids
 
 

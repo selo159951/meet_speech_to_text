@@ -168,3 +168,10 @@ def _transcribe_and_finish(job_id, jp, job, samples, duration, parts, device, pa
         # frozen copy of the model output for the "Original" export
         original_segments=[{k: s[k] for k in ("start", "end", "speaker", "text_original")} for s in segments],
     )
+    try:  # meeting mode: analyse right away; this must never fail a transcription
+        if asr.get_settings().get("meeting_mode"):
+            from . import analysis
+
+            analysis.start(job_id)
+    except Exception:
+        traceback.print_exc()
