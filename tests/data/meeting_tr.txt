@@ -1,0 +1,76 @@
+[1] [00:00-00:08] Konuşmacı 1: Evet arkadaşlar, hadi başlayalım. Ben Deniz, bugün sürüm planlamasını konuşacağız.
+[2] [00:08-00:16] Konuşmacı 1: Yani şey, 2.4 sürümü için neler var neler yok, netleştirelim istiyorum.
+[3] [00:16-00:24] Konuşmacı 2: Tamam. Gündem belli mi? Ben öyle geldim de.
+[4] [00:24-00:33] Konuşmacı 1: Kabaca belli. Bildirimler, offline mod, bir de o onboarding sorunu var ya, hani ilk açılışta takılıyor.
+[5] [00:33-00:40] Konuşmacı 2: Ha evet, o. Kullanıcıların yüzde onu falan orada düşüyor sanırım.
+[6] [00:40-00:48] Konuşmacı 1: Aynen. Elif sen ne dersin, sen o tarafla ilgileniyordun?
+[7] [00:48-00:55] Konuşmacı 3: Ben de tam onu söyleyecektim. Onboarding'de bir race condition var gibi, ama emin değilim.
+[8] [00:55-01:04] Konuşmacı 3: Yani şey, cihazdan cihaza değişiyor. Bazı Android sürümlerinde hiç olmuyor.
+[9] [01:04-01:12] Konuşmacı 1: Tamam, onu bir araştıralım. Ama önce kapsamı belirleyelim ki boşa iş yapmayalım.
+[10] [01:12-01:20] Konuşmacı 2: Bence offline mod bu sürüme çok. Yani büyük iş, 2.5'e atalım.
+[11] [01:20-01:28] Konuşmacı 1: Katılıyorum. Offline mod 2.5. Peki bildirimler?
+[12] [01:28-01:36] Konuşmacı 2: Bildirimler daha küçük, sığar gibi. Ama push altyapısı biraz karışık.
+[13] [01:36-01:44] Konuşmacı 3: Bildirimleri ben de isterim ama şey, test süresi uzun olabilir.
+[14] [01:44-01:52] Konuşmacı 1: O zaman bildirimleri alıyoruz ama kapsamı dar tutalım. Sadece temel push.
+[15] [01:52-01:59] Konuşmacı 2: Temel push derken? Yani sadece kampanya bildirimi mi?
+[16] [01:59-02:07] Konuşmacı 1: Evet, sadece kampanya. Zamanlanmış bildirimleri sonraya bırakalım.
+[17] [02:07-02:14] Konuşmacı 2: Tamam, mantıklı. O zaman bildirimler 2.4'te, dar kapsamlı.
+[18] [02:14-02:22] Konuşmacı 1: Güzel. Bunu karar olarak not ediyorum: kampanya bildirimleri 2.4'e giriyor, zamanlanmış bildirimler 2.5'e.
+[19] [02:22-02:30] Konuşmacı 2: Bir de şu var, sürüm tarihi ne? Ben onu net bilmiyorum.
+[20] [02:30-02:38] Konuşmacı 1: İşte onu bugün netleştirelim. Ben iki hafta diye düşünüyorum, çok mu sıkışık?
+[21] [02:38-02:46] Konuşmacı 2: İki hafta biraz sıkışık ama olabilir. Testçi yükü var bir de.
+[22] [02:46-02:54] Konuşmacı 3: Bence iki hafta riskli. Yani şey, onboarding de düzeltilecekse.
+[23] [02:54-03:03] Konuşmacı 1: Onboarding'i bu sürüme almasak? Sadece bildirimler ve küçük düzeltmeler?
+[24] [03:03-03:10] Konuşmacı 2: Bence onboarding de girmeli, ama düzeltme olarak, büyük değişiklik değil.
+[25] [03:10-03:18] Konuşmacı 1: Peki, onboarding düzeltmesi 2.4'te ama sadece kritik bug. Yeniden tasarım yok.
+[26] [03:18-03:25] Konuşmacı 2: Anlaştık. O zaman iki hafta tutabilir belki.
+[27] [03:25-03:33] Konuşmacı 1: Tamam, sürüm tarihi iki hafta sonra Cuma olsun. Bunu da karar yazıyorum.
+[28] [03:33-03:41] Konuşmacı 2: Bu arada, öğle yemeği ne olacak? Ben açlıktan ölüyorum.
+[29] [03:41-03:48] Konuşmacı 1: Ha ha, evet ya. Ben pizza diyorum, dün de pizza yedik ama olsun.
+[30] [03:48-03:56] Konuşmacı 2: Yine mi pizza? Ben dönerciye gidelim derim, şu köşedeki.
+[31] [03:56-04:04] Konuşmacı 3: Bence döner iyi fikir. Dün pizza biraz ağırdı, yani şey, uyku bastırdı sonra.
+[32] [04:04-04:12] Konuşmacı 1: Tamam tamam, döner olsun. Ama sonra bir maç da var, haberiniz olsun.
+[33] [04:12-04:20] Konuşmacı 2: Hangi maç? Ben dünkü maçı kaçırdım zaten, sinir oldum.
+[34] [04:20-04:27] Konuşmacı 1: Akşamki. Neyse, sonra bakarız, konuya dönelim.
+[35] [04:27-04:35] Konuşmacı 1: Görev dağılımına geçelim. Bildirimler kimde?
+[36] [04:35-04:43] Konuşmacı 2: Bildirimleri ben alabilirim. Ama altyapı tarafında yardım lazım olabilir.
+[37] [04:43-04:51] Konuşmacı 1: Tamam, Burak sen bildirimleri al. Bir de şey, push altyapısı dokümantasyonu kim yapacak?
+[38] [04:51-04:59] Konuşmacı 3: Dokümantasyonu ben yapabilirim, ama önce altyapıyı anlamam lazım.
+[39] [04:59-05:07] Konuşmacı 1: O zaman Elif, sen push altyapısı dokümantasyonunu al. Cuma'ya kadar.
+[40] [05:07-05:15] Konuşmacı 3: Cuma mı? Şey, tamam, hallederim herhalde.
+[41] [05:15-05:23] Konuşmacı 1: Onboarding bug'ı da lazım. Burak, sen bakabilir misin?
+[42] [05:23-05:31] Konuşmacı 2: Onboarding'i ben alamam, bildirimlerle çakışır. Elif alsın?
+[43] [05:31-05:39] Konuşmacı 3: Ben de dokümantasyon var. Ama onboarding'i de alabilirim sanırım.
+[44] [05:39-05:47] Konuşmacı 1: O zaman Elif onboarding araştırmasını alsın, salıya kadar kök nedeni bulsun.
+[45] [05:47-05:55] Konuşmacı 2: Peki test planı kimde? Bildirimler için test senaryoları lazım.
+[46] [05:55-06:03] Konuşmacı 1: Test planını ben alayım. Çarşamba'ya kadar hazır ederim.
+[47] [06:03-06:11] Konuşmacı 2: Bir de sürüm notları var, onu da unutmayalım.
+[48] [06:11-06:19] Konuşmacı 1: Sürüm notlarını Burak sen yaz, Perşembe'ye kadar. Tamam mı?
+[49] [06:19-06:27] Konuşmacı 2: Tamam, Perşembe. Ama feature freeze ne zaman?
+[50] [06:27-06:35] Konuşmacı 1: Feature freeze Cuma olsun, sürümden bir hafta önce. Mantıklı mı?
+[51] [06:35-06:43] Konuşmacı 2: Mantıklı. O zaman sürümden önceki Cuma freeze.
+[52] [06:43-06:51] Konuşmacı 1: Evet, bunu da karar olarak yazıyorum: feature freeze sürümden bir hafta önce.
+[53] [06:51-06:59] Konuşmacı 3: Peki şey, tasarım tarafında bir değişiklik olacak mı? Bilmem gerekiyor mu?
+[54] [06:59-07:07] Konuşmacı 1: Tasarım yok dedik ya, sadece kritik bug. Şey, bir de bildirim metinleri var tabii.
+[55] [07:07-07:15] Konuşmacı 3: Bildirim metinlerini kim yazacak? Ben mi?
+[56] [07:15-07:22] Konuşmacı 2: Metinler pazarlamadan gelecek sanırım, ama emin değilim.
+[57] [07:22-07:30] Konuşmacı 1: Evet, pazarlama verecek. Ama şey, son karar değil bu, bakacağız.
+[58] [07:30-07:38] Konuşmacı 1: Bir de analytics var. Bildirim açılma oranlarını ölçecek miyiz?
+[59] [07:38-07:46] Konuşmacı 2: Bence ölçelim, yoksa başarıyı bilmeyiz. Ama analytics altyapısı hazır mı?
+[60] [07:46-07:54] Konuşmacı 1: Hazır değil galiba. Neyse, onu 2.5'e bırakalım, şimdi kapsamı şişirmeyelim.
+[61] [07:54-08:02] Konuşmacı 2: Peki. O zaman analytics 2.5, tamam.
+[62] [08:02-08:10] Konuşmacı 1: Son olarak riskler. İki hafta sıkışık, testçi yükü var, bir de Elif'in işi çok.
+[63] [08:10-08:18] Konuşmacı 3: Benim işim çok derken? Yani şey, ikisini de alabilirim ama zorlanabilirim.
+[64] [08:18-08:26] Konuşmacı 1: Farkındayım, gerekirse onboarding'i ben devralırım. Şimdilik öyle kalsın.
+[65] [08:26-08:34] Konuşmacı 2: Bir de şu var: sürüm sonrası hotfix planı var mı?
+[66] [08:34-08:42] Konuşmacı 1: Hotfix için nöbet listesi yapalım, ama bugün değil. Sonra hallederiz.
+[67] [08:42-08:50] Konuşmacı 2: Tamam. Benim aklıma takılan bir şey kalmadı sanırım.
+[68] [08:50-08:58] Konuşmacı 1: O zaman toparlıyorum: bildirimler dar kapsam, onboarding kritik bug, offline 2.5, freeze bir hafta önce.
+[69] [08:58-09:06] Konuşmacı 3: Peki offline mod 2.5 derken, müşteriye ne söyleyeceğiz? Şey, söz verilmişti de.
+[70] [09:06-09:14] Konuşmacı 1: Onu ben pazarlamayla konuşurum, sonra. Şimdilik plan bu.
+[71] [09:14-09:22] Konuşmacı 2: Görevler net o zaman: Burak bildirimler ve sürüm notları, Elif dokümantasyon ve onboarding, Deniz test planı.
+[72] [09:22-09:30] Konuşmacı 1: Aynen. Tarihleri de not ettim. Bir şey atladık mı?
+[73] [09:30-09:38] Konuşmacı 2: Bence atlamadık. Ha, bir de toplantı notlarını kim paylaşacak?
+[74] [09:38-09:46] Konuşmacı 1: Onu ben paylaşırım, bugün içinde. Tamam mıyız?
+[75] [09:46-09:54] Konuşmacı 2: Tamamım. O zaman dönerciye gidiyoruz, değil mi? Ben çok acıktım.
+[76] [09:54-10:00] Konuşmacı 1: Evet evet, dağılabiliriz. Herkese kolay gelsin.
