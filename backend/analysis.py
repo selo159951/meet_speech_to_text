@@ -33,17 +33,21 @@ def _arr(item):
     return {"type": "array", "items": item}
 
 
+def _cap(item, n, least=0):  # upper bounds stop a small model from looping on a list
+    return {**_arr(item), "maxItems": n, **({"minItems": least} if least else {})}
+
+
 NOTES_SCHEMA = _obj(
-    topics={**_arr(_obj(title=_S, summary=_S, line=_I)), "minItems": 1},
-    decisions=_arr(_obj(text=_S, line=_I)),
-    tasks=_arr(_obj(owner=_S, task=_S, due=_S, line=_I)),
-    questions=_arr(_obj(asker=_S, text=_S, answered={"type": "boolean"}, line=_I)),
-    people=_arr(_obj(name=_S, did=_S, got=_S)),
+    topics=_cap(_obj(title=_S, summary=_S, line=_I), 8, 1),
+    decisions=_cap(_obj(text=_S, line=_I), 12),
+    tasks=_cap(_obj(owner=_S, task=_S, due=_S, line=_I), 12),
+    questions=_cap(_obj(asker=_S, text=_S, answered={"type": "boolean"}, line=_I), 10),
+    people=_cap(_obj(name=_S, did=_S, got=_S), 10),
 )
 MERGE_SCHEMA = _obj(
     summary=_S,
-    people={**_arr(_obj(name=_S, contribution=_T, gained=_T, evidence=_arr(_I))), "minItems": 1},
-    score=_obj(decisions=_I, focus=_I, repetition=_I, comment=_S, tips=_arr(_S)),
+    people=_cap(_obj(name=_S, contribution=_T, gained=_T, evidence=_cap(_I, 6)), 12, 1),
+    score=_obj(decisions=_I, focus=_I, repetition=_I, comment=_S, tips=_cap(_S, 3)),
 )
 
 # ---------------- prompts ----------------

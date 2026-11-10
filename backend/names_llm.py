@@ -147,7 +147,9 @@ def suggest(segments: list[dict], speakers: dict, generate, cancel=None, lang: s
     if not groups:
         return []
     lines = "\n\n".join("\n".join(_render(segments[i], lang) for i in g) for g in groups)
-    out = generate(PROMPTS[lang].format(lines=lines), schema=SCHEMA, system=SYSTEM[lang],
+    # one entry per speaker at most: stops a small model from repeating the same name until it runs out
+    schema = {**SCHEMA, "properties": {"speakers": {**SCHEMA["properties"]["speakers"], "maxItems": max(1, len(speakers))}}}
+    out = generate(PROMPTS[lang].format(lines=lines), schema=schema, system=SYSTEM[lang],
                    max_tokens=1024, temperature=0.1, cancel=cancel)
     ids = {s["id"] for s in segments}
     known = {int(k) for k in speakers} | {s["speaker"] for s in segments}
