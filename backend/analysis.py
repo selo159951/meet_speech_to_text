@@ -45,7 +45,7 @@ NOTES_SCHEMA = _obj(
     people=_cap(_obj(name=_S, did=_S, got=_S), 10),
 )
 MERGE_SCHEMA = _obj(
-    summary=_S,
+    summary={"type": "string", "minLength": 40},
     people=_cap(_obj(name=_S, contribution=_T, gained=_T, evidence=_cap(_I, 6)), 12, 1),
     score=_obj(decisions=_I, focus=_I, repetition=_I, comment=_S, tips=_cap(_S, 3)),
 )
@@ -493,7 +493,7 @@ def _run(job_id: str, cancel, generate, t0: float) -> None:
 
         check()
         gen = lambda *a, **k: generate(*a, **{**k, "cancel": cancel})  # noqa: E731
-        llm_found = names_llm.suggest(segments, speakers, gen)
+        llm_found = names_llm.suggest(segments, speakers, gen, lang=LANG)
         rule = names.detect_names(segments, speakers)
         auto, suggestions = names_llm.combine(rule, llm_found, job.get("voice_matches") or {})
         for k, v in auto.items():

@@ -95,7 +95,7 @@ def test_no_candidates_no_call():
 
 # ---------------------------------------------------------------- post-processing
 def run_post(entries, segs=None):
-    segs = segs or talk((0, "Ben Deniz."), (1, "Ha, tamam. Elif sen?"), (2, "Evet."))
+    segs = segs or talk((0, "Ben Deniz."), (1, "Ha, tamam. Elif sen?"), (2, "Evet. Ece, Işıl ve İrem de burada."))
     return suggest(segs, {"0": "Speaker 1", "1": "Speaker 2", "2": "Speaker 3"}, Fake({"speakers": entries}))
 
 
@@ -226,3 +226,12 @@ def test_accept_name_suggestion_without_analysis_file():
         bridge.Api().accept_name_suggestion(jid, 0, "  ")
     with pytest.raises(ValueError):
         bridge.Api().accept_name_suggestion("nope", 0, "X")
+
+
+def test_name_that_is_never_said_is_rejected():
+    segs = [{"id": 1, "speaker": 0, "start": 0, "end": 1, "text_original": "Good morning everyone, thanks Maria.", "text_edited": "Good morning everyone, thanks Maria."},
+            {"id": 2, "speaker": 1, "start": 1, "end": 2, "text_original": "Thanks.", "text_edited": "Thanks."}]
+    gen = lambda *a, **k: {"speakers": [{"speaker": 1, "name": "Elif", "confidence": "high", "line": 1, "reason": ""},
+                                        {"speaker": 2, "name": "Maria", "confidence": "high", "line": 1, "reason": ""}]}
+    out = names_llm.suggest(segs, {"0": "Speaker 1", "1": "Speaker 2"}, gen, lang="en")
+    assert [(e["speaker"], e["name"]) for e in out] == [(1, "Maria")]

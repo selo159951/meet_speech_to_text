@@ -215,7 +215,7 @@ def test_names_stage_is_applied_only_to_default_labels(monkeypatch):
     import types
 
     mod = types.ModuleType("backend.names_llm")
-    mod.suggest = lambda segs, spk, gen: [{"speaker": 1, "name": "Burak", "confidence": 0.9, "line": 3}]
+    mod.suggest = lambda segs, spk, gen, **kw: [{"speaker": 1, "name": "Burak", "confidence": 0.9, "line": 3}]
     mod.combine = lambda rule, llm, voice: ({0: "Mehmet", 1: "Burak"}, [{"speaker": 1, "name": "Burak", "line": 3}])
     monkeypatch.setitem(sys.modules, "backend.names_llm", mod)
     monkeypatch.setattr("backend.names_llm", mod, raising=False)

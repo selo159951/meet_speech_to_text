@@ -153,6 +153,8 @@ def suggest(segments: list[dict], speakers: dict, generate, cancel=None, lang: s
                    max_tokens=1024, temperature=0.1, cancel=cancel)
     ids = {s["id"] for s in segments}
     known = {int(k) for k in speakers} | {s["speaker"] for s in segments}
+    # a name must really be said in the recording: small models like to return the prompt's example names
+    spoken = set(re.findall(r"\w+", _norm(" ".join(str(x.get("text_edited") or x.get("text_original") or "") for x in segments))))
     best: dict[int, dict] = {}
     for e in (out or {}).get("speakers") or []:
         try:
@@ -166,6 +168,8 @@ def suggest(segments: list[dict], speakers: dict, generate, cancel=None, lang: s
         if conf is None or spk not in known or line not in ids or not PERSON.match(name):
             continue
         if any(w.casefold() in STOP for w in name.split()):
+            continue
+        if not all(any(t.startswith(_norm(w)) for t in spoken) for w in name.split()):
             continue
         if spk not in best or conf > best[spk]["confidence"]:
             best[spk] = {"speaker": spk, "name": name, "confidence": conf, "line": line}
