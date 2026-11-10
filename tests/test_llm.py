@@ -123,7 +123,7 @@ def test_build_command():
     assert cmd[cmd.index("-c") + 1] == "4096" and cmd[cmd.index("-n") + 1] == "512"
     assert "--reasoning-budget" in cmd and "-no-cnv" in cmd
     cpu = llm.build_command({"path": "m", "device": "cpu", "gpu_index": None}, "p", None, None, 10, 0.0, 4096)
-    assert cpu[cpu.index("-ngl") + 1] == "0" and "-dev" not in cpu
+    assert cpu[cpu.index("-ngl") + 1] == "0" and cpu[cpu.index("-dev") + 1] == "none"
     assert "-sysf" not in cpu and "--json-schema" not in cpu
 
 
