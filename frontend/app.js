@@ -65,7 +65,13 @@ function jobRow(j, q) {
     j.lines ? plural(j.lines, "line_1", "lines_n") + (j.edited ? " · " + t("edited_n", { n: j.edited }) : "") : null]
     .filter(Boolean).join("  ·  ");
   const badge = el("span", { className: "badge " + j.status, textContent: status ? t(status) : j.status, title: j.error || "" });
-  const info = el("div", { className: "jinfo" }, el("div", {}, title, " ", badge), el("div", { className: "jmeta", textContent: meta }));
+  // small analysis badge when the backend includes an analysis field (older jobs have none)
+  const anState = j.analysis?.state;
+  const anBadge = anState === "queued" || anState === "running"
+    ? el("span", { className: "badge queued", textContent: t("badge_analysing") })
+    : anState === "done" ? el("span", { className: "badge done", textContent: t("badge_analysis_ready") }) : null;
+  const info = el("div", { className: "jinfo" }, el("div", {}, title, " ", badge, ...(anBadge ? [" ", anBadge] : [])),
+    el("div", { className: "jmeta", textContent: meta }));
   if (q) { // where the search term was found
     const where = [];
     if (j.name_match) where.push(t("in_name"));
@@ -151,6 +157,7 @@ async function openJob(id) {
   $("audio").src = `${MEDIA}/${id}/audio.mp3`;
   $("q").value = ""; $("fSpk").value = ""; $("fEdited").checked = false; $("fMatch").checked = false;
   applyJob(j);
+  window.analysisHooks?.opened(j); // analysis.js: stop polling, back to the Metin tab
 }
 
 function applyJob(j) {
@@ -548,6 +555,13 @@ window.addEventListener("dragover", (e) => e.preventDefault());
 window.addEventListener("drop", (e) => e.preventDefault());
 window.addEventListener("beforeunload", () => save());
 
+/* Meeting mode: transcription also starts the analysis in the background. */
+$("meetingMode").onchange = (e) => call("set_settings", { meeting_mode: e.target.checked }).catch(() => {});
+
 call("get_settings")
-  .then((st) => { showGpu(st); setLang(st.ui_lang || (navigator.language.startsWith("tr") ? "tr" : "en"), false); })
+  .then((st) => {
+    showGpu(st);
+    $("meetingMode").checked = !!st.meeting_mode;
+    setLang(st.ui_lang || (navigator.language.startsWith("tr") ? "tr" : "en"), false);
+  })
   .catch(() => setLang("tr", false));
