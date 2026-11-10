@@ -1,8 +1,8 @@
-# Meeting Transcriber · Toplantı Yazıya Dökücü
+# Kâtip · Meeting scribe
 
 Turns meeting recordings (40–80 min and longer) into an editable transcript with time ranges and speaker names. It is a **desktop app**: everything runs offline on the PC, no audio leaves the computer, and no network port is opened. The interface is in Turkish and English.
 
-> **TR:** Toplantı kayıtlarını konuşmacılarıyla birlikte düzenlenebilir metne dönüştüren masaüstü uygulaması. Tamamen çevrimdışı çalışır. `MeetTranscriber.zip`'i açıp `MeetTranscriber.exe`'ye çift tıklayın.
+> **TR:** Toplantı kayıtlarını konuşmacılarıyla birlikte düzenlenebilir metne dönüştüren masaüstü uygulaması. Tamamen çevrimdışı çalışır. `Katip.zip`'i açıp `Katip.exe`'ye çift tıklayın.
 
 ## Features
 - Drag & drop any audio/video file (mp3, wav, m4a, mp4, ogg…); progress with remaining-time estimate
@@ -18,7 +18,7 @@ Turns meeting recordings (40–80 min and longer) into an editable transcript wi
 ## Graphics cards
 | Card | Engine | Notes |
 |---|---|---|
-| NVIDIA | CUDA (faster-whisper) in `MeetTranscriber-NVIDIA.zip`, Vulkan in `MeetTranscriber.zip` | tested |
+| NVIDIA | CUDA (faster-whisper) in `Katip-NVIDIA.zip`, Vulkan in `Katip.zip` | tested |
 | AMD Radeon RX, Intel Arc A/B | Vulkan (whisper.cpp) | built for it; **not tested on a real AMD/Intel card yet** |
 | Onboard graphics (Intel Iris/UHD, AMD Radeon Graphics) | CPU by default | usually slower than the CPU; Vulkan can be chosen by hand |
 | none | CPU | works everywhere, slower |
@@ -39,10 +39,10 @@ Measured on a laptop with an RTX 1000 Ada (6 GB) and a 22-core Core Ultra 7, `la
 ## Windows .exe (no Python needed)
 ```powershell
 .\tools\build_whispercpp.ps1   # once: builds whisper.cpp with Vulkan into vendor\whispercpp
-.\build_windows.ps1            # dist\MeetTranscriber.zip         (CPU + Vulkan: any PC)
-.\build_windows.ps1 -Gpu       # also dist\MeetTranscriber-NVIDIA.zip (adds CUDA, fastest on NVIDIA)
+.\build_windows.ps1            # dist\Katip.zip         (CPU + Vulkan: any PC)
+.\build_windows.ps1 -Gpu       # also dist\Katip-NVIDIA.zip (adds CUDA, fastest on NVIDIA)
 ```
-Unzip and double-click `MeetTranscriber.exe` (needs Microsoft Edge WebView2, built into Windows 10/11). The System page downloads the Whisper model on first start; after that everything works offline.
+Unzip and double-click `Katip.exe` (needs Microsoft Edge WebView2, built into Windows 10/11). The System page downloads the Whisper model on first start; after that everything works offline.
 
 ## Run (development)
 ```powershell
@@ -52,7 +52,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python app.py
 ```
 Or double-click `Baslat.bat`, which does all of this on the first run.
-Tests: `.\.venv\Scripts\python -m pytest tests`. Data lives in `%APPDATA%\MeetTranscriber` (override with `MEETTRANSCRIBER_HOME`).
+Tests: `.\.venv\Scripts\python -m pytest tests`. Data lives in `%APPDATA%\Katip` (override with `KATIP_HOME`; `MEETTRANSCRIBER_HOME` is still honoured). An existing `%APPDATA%\MeetTranscriber` folder is copied over once at first start.
 
 ## Credits
 - **Fikir Babası / Idea:** Umut Akbaş

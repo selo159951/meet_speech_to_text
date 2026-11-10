@@ -1,7 +1,7 @@
 /* UI translations. t("key", {n: 3}) fills {n}. HTML uses data-i18n / data-i18n-ph / data-i18n-title. */
 const I18N = {
   en: {
-    app: "Meeting Transcriber", all_recordings: "← All recordings",
+    app: "Kâtip", app_subtitle: "Meeting scribe", all_recordings: "← All recordings",
     drop: "Drag & drop an audio or video file here", or: "or", browse: "browse",
     prev_recordings: "Previous recordings", jq_ph: "Search names, speakers or what was said…",
     all_statuses: "All statuses", st_done: "Done", st_running: "In progress", st_error: "Failed", st_queued: "Waiting",
@@ -70,7 +70,7 @@ const I18N = {
     cancel_btn: "Cancel", working: "Working...",
   },
   tr: {
-    app: "Toplantı Yazıya Dökücü", all_recordings: "← Tüm kayıtlar",
+    app: "Kâtip", app_subtitle: "Toplantı kâtibi", all_recordings: "← Tüm kayıtlar",
     drop: "Ses veya video dosyasını buraya sürükleyip bırakın", or: "veya", browse: "dosya seçin",
     prev_recordings: "Önceki kayıtlar", jq_ph: "Kayıt adı, konuşmacı veya konuşmanın içinde ara…",
     all_statuses: "Tüm durumlar", st_done: "Tamamlandı", st_running: "İşleniyor", st_error: "Hata", st_queued: "Sırada",
