@@ -19,6 +19,8 @@
   <div id="drop" tabindex="0">
     <p class="big" data-i18n="drop"></p>
     <p><span data-i18n="or"></span> <a href="#" id="browseBtn" class="link" data-i18n="browse"></a></p>
+    <label class="toggle meetmode"><input type="checkbox" id="meetingMode"><span class="knob"></span><span data-i18n="meeting_mode"></span></label>
+    <p class="hint meetmodehint" data-i18n="meeting_mode_hint"></p>
   </div>
   <section id="progress" hidden>
     <div id="pname"></div>
@@ -65,6 +67,11 @@
       </div>
     </details>
   </div>
+  <div id="jobTabs" class="tabs">
+    <button id="tabText" class="tab active" data-i18n="tab_text"></button>
+    <button id="tabAnalysis" class="tab" data-i18n="tab_analysis"></button>
+  </div>
+  <div id="paneText">
   <div id="speakers"></div>
   <div id="filters">
     <div class="searchbox">
@@ -90,6 +97,8 @@
   </div>
   <div id="segs"></div>
   <p id="empty" class="hint" hidden data-i18n="no_lines_filter"></p>
+  </div>
+  <div id="paneAnalysis" hidden></div>
 </main>
 
 <footer id="player" hidden>
@@ -131,5 +140,6 @@
 <script src="app.js"></script>
 <script src="system.js"></script>
 <script src="people.js"></script>
+<script src="analysis.js"></script>
 </body>
 </html>

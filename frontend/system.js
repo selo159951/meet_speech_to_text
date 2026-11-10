@@ -73,7 +73,7 @@ Object.assign(I18N.tr, {
   const ENG_KEY = { auto: "eng_auto", "ct2-cuda": "eng_ct2_cuda", "ct2-cpu": "eng_ct2_cpu", whispercpp: "eng_whispercpp" };
   const MODEL_KEY = { "large-v3-turbo": "m_large", medium: "m_medium", small: "m_small" };
   const MODEL_DESC = { "large-v3-turbo": "m_large_d", medium: "m_medium_d", small: "m_small_d" };
-  let info = null, wiz = false, pollT = null, lastStatus = null;
+  let info = null, llm = null, wiz = false, pollT = null, lastStatus = null;
 
   /* ---------- duration / ETA (also used by watch() in app.js) ---------- */
   function dur(s) {
@@ -118,12 +118,18 @@ Object.assign(I18N.tr, {
   $("sysBtn").onclick = open;
   $("homeBtn").addEventListener("click", close);
 
+  async function loadLlm() {
+    if (!window.pywebview?.api || typeof window.pywebview.api.get_llm_info !== "function") return null;
+    try { return await call("get_llm_info"); } catch { return null; }
+  }
   async function refresh() {
     info = await call("get_system_info");
+    llm = await loadLlm();
     render();
     const test = info.test.state === "running", dl = info.download.state === "running";
+    const llmDl = !!llm?.download?.running; // analysis-model download: poll once a second
     clearTimeout(pollT);
-    if ((test || dl) && !page.hidden) pollT = setTimeout(refresh, 700);
+    if ((test || dl || llmDl) && !page.hidden) pollT = setTimeout(refresh, llmDl && !test && !dl ? 1000 : 700);
     else if (wiz) wizStep();
   }
 
@@ -196,10 +202,55 @@ Object.assign(I18N.tr, {
     });
     kids.push(card(t("choose_model"), ...rows));
 
+    // analysis model (meeting mode)
+    if (llm) kids.push(llmCard());
+
     // technical details
     const tech = { plan, settings: set, engines: info.engines, hardware: hw };
     kids.push(el("details", { className: "tech" }, el("summary", { textContent: t("details") }), el("pre", { textContent: JSON.stringify(tech, null, 2) })));
     page.replaceChildren(...kids);
+  }
+
+  /* Analysis model card: device, catalog, download progress, automatic/manual choice. */
+  function llmCard() {
+    const title = t("llm_title");
+    if (!llm.binary) return card(title, line(t("llm_engine_missing"), "warn"));
+    const dl = llm.download || {};
+    const kids = [
+      line(`${t("llm_device")}: ${devName(llm.device)}${llm.gpu ? " · " + llm.gpu : ""}`, "strong"),
+      line(`${t("llm_active")}: ${llm.active || "—"}`, "dim"),
+    ];
+    for (const m of llm.models || []) {
+      const busy = dl.running && dl.name === m.name;
+      const tags = [m.recommended ? t("recommended") : ""];
+      if (m.fit === "ok") tags.push(t("llm_fit_ok"));
+      else if (m.fit === "tight") tags.push(t("fit_tight"));
+      else if (m.fit === "no") tags.push(t("llm_fit_no"));
+      const meta = [m.size_gb ? m.size_gb + " GB" : "", tags.filter(Boolean).join(" · ")].filter(Boolean).join(" · ");
+      const btn = el("button");
+      if (m.downloaded) { btn.textContent = "✓ " + t("downloaded"); btn.disabled = true; }
+      else if (busy) { btn.textContent = t("downloading"); btn.disabled = true; }
+      else {
+        btn.className = "primary";
+        btn.textContent = `${t("download")} (${m.size_gb} GB)`;
+        btn.onclick = async () => { try { await call("download_llm", m.name); } catch (e) { toast(String(e?.message || e)); } refresh(); };
+      }
+      const row = el("div", { className: "mrow" + (llm.active === m.name ? " cur" : "") },
+        el("div", { className: "minfo" }, line(m.label || m.name, "strong"), line(meta, "dim")), btn);
+      if (busy) row.append(el("div", { className: "bar full" }, el("div", { style: `width:${Math.round((dl.done / Math.max(dl.total, 1)) * 100)}%` })));
+      if (dl.error && dl.name === m.name) row.append(line(t("dl_error", { e: dl.error }), "warn"));
+      kids.push(row);
+    }
+    const sel = el("select");
+    sel.append(el("option", { value: "auto", selected: llm.model === "auto", textContent: t("llm_auto") }));
+    for (const m of llm.models || []) if (m.downloaded) sel.append(el("option", { value: m.name, selected: llm.model === m.name, textContent: m.label || m.name }));
+    sel.onchange = async () => {
+      try { llm = await call("set_llm_model", sel.value); render(); }
+      catch (e) { toast(String(e?.message || e)); }
+    };
+    kids.push(el("div", { className: "sline llmchoose" },
+      el("span", { className: "ameta", textContent: t("llm_choose_model") + " " }), sel));
+    return card(title, ...kids);
   }
 
   /* ---------- first-launch wizard: check -> download -> speed test ---------- */
