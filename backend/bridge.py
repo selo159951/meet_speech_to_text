@@ -280,3 +280,20 @@ class Api(SystemApi):
 
         _job(job_id)
         return people.accept_suggestion(job_id, int(speaker), person_id)
+
+    def accept_name_suggestion(self, job_id: str, speaker: int, name: str) -> dict:
+        import json
+
+        _job(job_id)
+        name = name.strip()
+        if not name:
+            raise ValueError("empty name")
+        job = store.save_edits(job_id, None, {int(speaker): name[:80]})
+        path = store.job_path(job_id) / "analysis.json"
+        try:
+            data = json.loads(path.read_text("utf-8"))
+            data["name_suggestions"] = [x for x in data.get("name_suggestions", []) if x.get("speaker") != int(speaker)]
+            path.write_text(json.dumps(data, ensure_ascii=False, indent=1), "utf-8")
+        except (OSError, ValueError):
+            pass
+        return job
