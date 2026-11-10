@@ -18,6 +18,11 @@ if os.path.isdir("vendor/whispercpp"):
     for f in os.listdir("vendor/whispercpp"):
         binaries.append((os.path.join("vendor/whispercpp", f), "whispercpp"))
 
+# llama.cpp runtime for the local LLM, built by tools/build_llamacpp.ps1
+if os.path.isdir("vendor/llamacpp"):
+    for f in os.listdir("vendor/llamacpp"):
+        binaries.append((os.path.join("vendor/llamacpp", f), "llamacpp"))
+
 a = Analysis(
     ["app.py"], datas=datas, binaries=binaries, hiddenimports=hiddenimports,
     excludes=["nvidia", "tkinter", "matplotlib", "pytest", "IPython"],
