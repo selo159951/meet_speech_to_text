@@ -14,6 +14,9 @@ SELF_INTRO = [
     re.compile(rf"\b[Bb]en(?:\s+[{LO}]+){{0,3}}\s+{NAME}{END}"),
     re.compile(rf"\b(?:[Mm]y name is|[Ii]'m|[Ii] am|[Tt]his is)\s+{NAME}{END}"),
 ]
+# speech-to-text often writes a whole sentence in lower case: "hi my name is melisa"
+LOWER_INTRO = re.compile(rf"\b(?:my name is|ad[ıi]m|ismim)\s+([{LO}]{{3,}}){END}")
+LOWER_STOP = {"not", "also", "now", "here", "just", "very", "john", "ben", "bir", "the", "and", "was", "is", "are"}
 ADDRESS = re.compile(
     rf"\b{NAME},?\s+(?:sen\b|siz\b|sıra\s+sende|söz\s+sende|buyur|what about you|your turn|go ahead)"
 )
@@ -41,6 +44,11 @@ def detect_names(segments: list[dict], speakers: dict) -> dict[int, str]:
                 if m.group(1) not in intros.setdefault(spk, []):
                     intros[spk].append(m.group(1))
                 break
+        m = LOWER_INTRO.search(text)
+        if m and m.start() < INTRO_WINDOW and m.group(1) not in LOWER_STOP:
+            nm = m.group(1)[0].upper().replace("i", "İ") + m.group(1)[1:] if m.group(1)[0] == "i" else m.group(1).capitalize()
+            if nm not in NOT_NAMES and nm not in intros.setdefault(spk, []):
+                intros[spk].append(nm)
         m = ADDRESS.search(text)
         if m and m.group(1) not in NOT_NAMES:
             nxt = next((s for s in segments[i + 1:] if s["speaker"] != spk), None)

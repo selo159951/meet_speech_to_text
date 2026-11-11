@@ -432,3 +432,12 @@ def test_a_voice_that_introduces_itself_twice_gets_no_name():
             s(2, 1, "And I am Greta, the teacher."), s(3, 2, "I am Özge Koriersu.")]
     names = detect_names(segs, {"0": "Speaker 1", "1": "Speaker 2", "2": "Speaker 3"})
     assert names == {0: "Mert", 2: "Özge"}  # speaker 2 said Elif and Greta: unnamed; Ö is a name letter
+
+
+def test_lower_case_introductions_are_found():
+    from backend.names import detect_names
+
+    segs = [{"id": 0, "speaker": 0, "text_edited": "um hi my name is melisa and i'm 16 years old"},
+            {"id": 1, "speaker": 1, "text_edited": "adım ışıl ve ben öğrenciyim"},
+            {"id": 2, "speaker": 2, "text_edited": "my name is not important"}]
+    assert detect_names(segs, {"0": "Speaker 1", "1": "Speaker 2", "2": "Speaker 3"}) == {0: "Melisa", 1: "Işıl"}

@@ -28,6 +28,8 @@ STRONG = [re.compile(p) for p in (
     rf"(?i:\bi'm|\bi am|my name is|this is|thanks|thank you),?\s+{N}",
     rf"{N},?\s+(?i:what do you think|what about you|your turn)",
 )]
+ORG_WORDS = r"(?:high school|school|lisesi|lise|anadolu|anatolian|university|üniversite|college|technopark|teknopark|ortaokulu|okulu|vocational)"
+ORG_AFTER = re.compile(ORG_WORDS, re.I)
 CAPITAL = re.compile(rf"[{UP}][{LO}]+")
 PERSON = re.compile(rf"^[{UP}][{LO}]+(?: [{UP}][{LO}]+)?$")
 STOP = {w.casefold() for w in NOT_NAMES} | {"konuşmacı", "speaker", "ben", "sen", "bir", "bu", "şu", "ama", "yani", "evet"}
@@ -57,6 +59,7 @@ PROMPTS = {
         "2. Biri birine seslenirse (\"Elif sen ne dersin?\", \"Burak Bey\") ad, o satırdan SONRA cevap veren konuşmacıya aittir.\n"
         "3. Biri teşekkür ederse (\"teşekkürler Burak\") ad genellikle bir ÖNCEKİ konuşmacıya aittir.\n"
         "Kurallar: yalnızca toplantıda bulunan ve konuşan kişilerin adlarını yaz. Sadece bahsedilen kişileri yazma. "
+        "Okul, şirket ve yer adları kişi değildir (\"Ayla Lisesi\"). "
         "Emin değilsen o konuşmacıyı atla. Bir ad en fazla bir konuşmacıya ait olabilir. "
         "`speaker` alanına K sayısını, `line` alanına adı ortaya koyan satırın numarasını yaz; `reason` kısa bir gerekçe olsun.\n\n"
         "Satırlar:\n{lines}"
@@ -69,6 +72,7 @@ PROMPTS = {
         "2. Someone addresses another person (\"Elif, what do you think?\", \"Mr. Burak\"): the name belongs to the speaker who replies AFTER that line.\n"
         "3. Someone thanks a person (\"thanks Burak\"): the name usually belongs to the PREVIOUS speaker.\n"
         "Rules: only give names of people who are in the meeting and speak. Skip people who are merely mentioned. "
+        "Names of schools, companies and places are not people (\"Ayla High School\"). "
         "Skip a speaker if you are not sure. A name belongs to at most one speaker. "
         "Put the number K in `speaker`, the id of the line that reveals the name in `line`, and a short `reason`.\n\n"
         "Lines:\n{lines}"
@@ -152,6 +156,7 @@ def suggest(segments: list[dict], speakers: dict, generate, cancel=None, lang: s
     out = generate(PROMPTS[lang].format(lines=lines), schema=schema, system=SYSTEM[lang],
                    max_tokens=1024, temperature=0.1, cancel=cancel)
     ids = {s["id"] for s in segments}
+    segs_by_id = {s["id"]: s for s in segments}
     known = {int(k) for k in speakers} | {s["speaker"] for s in segments}
     # a name must really be said in the recording: small models like to return the prompt's example names
     spoken = set(re.findall(r"\w+", _norm(" ".join(str(x.get("text_edited") or x.get("text_original") or "") for x in segments))))
@@ -169,6 +174,22 @@ def suggest(segments: list[dict], speakers: dict, generate, cancel=None, lang: s
             continue
         if any(w.casefold() in STOP for w in name.split()):
             continue
+        near = " ".join(str(segs_by_id[i].get("text_edited") or segs_by_id[i].get("text_original") or "")
+                        for i in range(line - 1, line + 3) if i in segs_by_id)
+        if _norm(name.split()[0]) not in set(re.findall(r"\w+", _norm(near))) and not any(
+                t.startswith(_norm(name.split()[0])) for t in re.findall(r"\w+", _norm(near))):
+            continue  # the cited lines never say this name
+        if ORG_AFTER.search(near) and re.search(rf"{re.escape(name.split()[0])}\W+(?:\w+\W+){{0,2}}{ORG_WORDS}", near, re.I):
+            continue  # "Ayla High School" is a place, not a person
+        cited = segs_by_id[line]
+        said = str(cited.get("text_edited") or cited.get("text_original") or "")
+        own = re.search(rf"(?i:\bi am|\bi'm|\bmy name is|\bben\b|\bad[ıi]m\b|\bismim\b)\W+(?:\w+\W+){{0,3}}{re.escape(name.split()[0])}", said)
+        if own and cited["speaker"] != spk:
+            continue  # "I am Elif" was said by somebody else: the name is theirs, not this speaker's
+        if cited["speaker"] == spk and not own:
+            continue  # a speaker who names somebody ("let's move on with Paula") is not that person
+        if not _is_strong(near):
+            conf = min(conf, 0.6)  # nobody introduced themselves or was addressed there: a suggestion, never automatic
         if not all(any(t.startswith(_norm(w)) for t in spoken) for w in name.split()):
             continue
         if spk not in best or conf > best[spk]["confidence"]:

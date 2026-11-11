@@ -95,7 +95,8 @@ def test_no_candidates_no_call():
 
 # ---------------------------------------------------------------- post-processing
 def run_post(entries, segs=None):
-    segs = segs or talk((0, "Ben Deniz."), (1, "Ha, tamam. Elif sen?"), (2, "Evet. Ece, Işıl ve İrem de burada."))
+    # every name is introduced by the person who owns it (the model may only take it from there)
+    segs = segs or talk((0, "Ben Deniz."), (1, "Ha, tamam. Elif sen?"), (2, "Evet. Ben Ece."), (2, "Ben Işıl."), (2, "Ben İrem."))
     return suggest(segs, {"0": "Speaker 1", "1": "Speaker 2", "2": "Speaker 3"}, Fake({"speakers": entries}))
 
 
@@ -113,7 +114,7 @@ def test_post_drops_invalid():
 def test_post_duplicate_name_and_best_entry():
     got = run_post([
         entry(1, "Deniz", "medium", 1), entry(1, "Deniz", "high", 1),
-        entry(2, "DENİZ", "low", 2), entry(3, "Elif", "low", 3), entry(3, "Ece", "medium", 3),
+        entry(2, "DENİZ", "low", 1), entry(3, "Elif", "low", 3), entry(3, "Ece", "medium", 3),
     ])
     assert [(e["speaker"], e["name"], e["confidence"]) for e in got] == [(0, "Deniz", 0.9), (2, "Ece", 0.6)]
 
@@ -121,7 +122,8 @@ def test_post_duplicate_name_and_best_entry():
 def test_turkish_casing():
     assert title("ıŞIL") == "Işıl" and title("İREM") == "İrem" and title("iPEK") == "İpek"
     assert title("ayşe nur") == "Ayşe Nur"
-    got = run_post([entry(1, "ıŞIL"), entry(2, "İREM", "medium", 2)])
+    segs = talk((0, "Ben Işıl."), (1, "Ben İrem."))
+    got = suggest(segs, {"0": "Speaker 1", "1": "Speaker 2"}, Fake({"speakers": [entry(1, "ıŞIL", line=1), entry(2, "İREM", "medium", 2)]}))
     assert [e["name"] for e in got] == ["Işıl", "İrem"]
 
 
@@ -235,3 +237,29 @@ def test_name_that_is_never_said_is_rejected():
                                         {"speaker": 2, "name": "Maria", "confidence": "high", "line": 1, "reason": ""}]}
     out = names_llm.suggest(segs, {"0": "Speaker 1", "1": "Speaker 2"}, gen, lang="en")
     assert [(e["speaker"], e["name"]) for e in out] == [(1, "Maria")]
+
+
+def test_school_names_and_unsupported_names_are_not_taken_as_people():
+    segs = talk((0, "We would like to introduce ourselves as the Ayla High School."), (1, "Hello, my name is Melisa."),
+                (2, "Thanks everyone for joining us today."))
+    gen = lambda *a, **k: {"speakers": [{"speaker": 1, "name": "Ayla", "confidence": "high", "line": 1, "reason": ""},
+                                        {"speaker": 2, "name": "Melisa", "confidence": "high", "line": 2, "reason": ""},
+                                        {"speaker": 3, "name": "Ayşe", "confidence": "high", "line": 3, "reason": ""}]}
+    out = suggest(segs, {"0": "Speaker 1", "1": "Speaker 2", "2": "Speaker 3"}, gen, lang="en")
+    assert [(e["speaker"], e["name"], e["confidence"]) for e in out] == [(1, "Melisa", 0.9)]  # "Ayşe" is said nowhere
+
+
+def test_a_name_without_an_introduction_or_address_is_only_a_suggestion():
+    segs = talk((0, "The report from Marta was very good."), (1, "Yes it was."))
+    gen = lambda *a, **k: {"speakers": [{"speaker": 2, "name": "Marta", "confidence": "high", "line": 1, "reason": ""}]}
+    out = suggest(segs, {"0": "Speaker 1", "1": "Speaker 2"}, gen, lang="en")
+    assert out and out[0]["confidence"] == 0.6
+
+
+def test_llm_name_said_by_another_speaker_or_naming_somebody_else_is_rejected():
+    segs = talk((0, "I am Elif Kaya from the school."), (1, "Hello everyone, let's move on with Paula."), (2, "My name is Paula."))
+    gen = lambda *a, **k: {"speakers": [{"speaker": 2, "name": "Elif", "confidence": "high", "line": 1, "reason": ""},
+                                        {"speaker": 2, "name": "Paula", "confidence": "high", "line": 2, "reason": ""},
+                                        {"speaker": 3, "name": "Paula", "confidence": "high", "line": 3, "reason": ""}]}
+    out = suggest(segs, {"0": "Speaker 1", "1": "Speaker 2", "2": "Speaker 3"}, gen, lang="en")
+    assert [(e["speaker"], e["name"]) for e in out] == [(2, "Paula")]  # the 3rd speaker, who really says it
