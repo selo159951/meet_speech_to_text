@@ -71,3 +71,16 @@ Ek ölçümler (Qwen3.5 4B):
 4. GitHub'a hiçbir şey gönderilmedi; tüm değişiklikler yerel commit'lerde.
 
 `models\llm\` klasöründe ölçüm için inen 5 model (~23 GB) duruyor; kullanmayacaklarını silebilirsin.
+
+
+## Kalite turu (11 Kasım, "hatasız ve kaliteli analiz")
+Gerçek kayıtlarındaki bir analizde (12 saniyelik deneme, işlemcide 9B) 146 sn sürmüş ve model olmayan şeyler yazmıştı. Yapılanlar:
+
+- **Ekran kartı:** 7 GB'lık 9B model 6 GB karta sığmadığı için tamamen işlemcide çalışıyordu. Artık sığmayan modelin bir kısmı kartta çalışır; analizden önce Whisper kart belleğinden bırakılır. Senin klasörüne Qwen 4B kopyalandı: tamamen karta sığar, otomatik o seçilir (paketli exe'de doğrulandı: Vulkan, 3,8 GB kart belleği, 88 sn).
+- **Hata dayanıklılığı:** model çıktısı bozuksa 3 kez dener; kartta hata olursa işlemcide yeniden dener; bir çağrı en fazla 25 dk bekler. Bir bölüm ya da özet yazılamazsa analiz çökmez: bulunanlar gösterilir, uyarı çıkar. Hiçbiri olmazsa net hata mesajı verir.
+- **Kararlar:** her bölüm için ayrı, tek amaçlı bir "yalnızca kararlar" taraması eklendi. Kurgusal toplantıda 4 önemli kararın 4'ü de bulunuyor (eskiden çoğu koşuda 2-3). Görev gibi duran "kararlar" ve aynı satırdaki tekrarlar ayıklanır.
+- **Uydurmaya karşı:** kayıtta hiç geçmeyen sürüm/miktar/yıl içeren cümleler ve maddeler atılır ("2.3'e gitti" gibi). Alıntılanan satır numarası birkaç satır kaymışsa, maddeyi gerçekten söyleyen satıra oturtulur.
+- **Dürüst puan:** model her toplantıya 85-98 veriyordu. Artık puan dökümden hesaplanıyor: karar sayısı (süreye göre), görev netliği (sorumlu + tarih), cevaplanan sorular, tekrarsızlık, konuşma dengesi. Değerlendirilecek şey yoksa o çubuk gösterilmez. Model yalnızca yorum ve önerileri yazar.
+- **Çok kısa kayıtlar** (60 sn altı ya da 6 satırdan az): puan ve kişi değerlendirmesi verilmez, "kayıt çok kısa" notu çıkar; böylece küçük örnekler hakkında uydurma yorum yazılmaz.
+
+Sonuç (Qwen3.5 4B, kurgusal toplantı, 3 koşu, Vulkan, 67-90 sn): isim 3/3, görev 6/6 (kişi, tarih, satır doğru), önemli karar 4/4, uydurma sayı yok. Hâlâ geçerli sınırlar: "cevapsız sorular" koşudan koşuya değişir; gerçek toplantılarla (üst üste konuşma, yazı hataları) denenmedi.
