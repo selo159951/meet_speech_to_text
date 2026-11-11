@@ -81,6 +81,17 @@ def load_model(progress: Callable[[float], None] | None = None):
     return _engine
 
 
+def release() -> None:
+    """Drop the loaded speech model so its video memory is free for the analysis model.
+    A transcription that is still running keeps its own reference; the next one reloads (a few seconds)."""
+    global _engine, _engine_key
+    import gc
+
+    with _lock:
+        _engine, _engine_key = None, None
+    gc.collect()
+
+
 def transcribe(samples: np.ndarray, duration: float,
                progress: Callable[[float], None]) -> tuple[list[Word], str]:
     return load_model().transcribe(samples, duration, progress)

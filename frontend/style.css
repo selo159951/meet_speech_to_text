@@ -222,3 +222,10 @@ footer { position:fixed; bottom:0; left:0; right:0; background:var(--card); bord
 @keyframes sshine { to { transform:translateX(100%); } }
 @media (prefers-reduced-motion: reduce) { .sbox, .slogo::after, .sfill::after { animation:none; } #splash { transition:none; } }
 body:has(#splash) { overflow:hidden; }
+
+/* vector icons (icons.js) */
+.ic { width:1.15em; height:1.15em; flex:none; vertical-align:-.2em; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+button.icon .ic { width:16px; height:16px; vertical-align:middle; }
+button.small.icon .ic { width:14px; height:14px; }
+kbd .ic { width:12px; height:12px; vertical-align:-.1em; }
+.verdict .ic { width:1.1em; height:1.1em; vertical-align:-.15em; }

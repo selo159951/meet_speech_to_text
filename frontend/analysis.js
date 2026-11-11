@@ -257,7 +257,7 @@ const SAMPLE_ANALYSIS = {
       for (const s of a.name_suggestions) {
         const chip = el("span", { className: "asugchip" },
           el("span", { textContent: t("an_suggestion", { s: speakerName(s.speaker), n: s.name }) }));
-        const ok = el("button", { className: "small", textContent: "✓", title: t("an_accept") });
+        const ok = el("button", { className: "small icon", title: t("an_accept") }, ic("check"));
         ok.onclick = async () => {
           if (!apiHas("accept_name_suggestion")) return;
           try {
@@ -266,7 +266,7 @@ const SAMPLE_ANALYSIS = {
           } catch (e) { toast(String(e?.message || e)); return; }
           load();
         };
-        const no = el("button", { className: "small", textContent: "✕", title: t("an_dismiss") });
+        const no = el("button", { className: "small icon", title: t("an_dismiss") }, ic("x"));
         no.onclick = () => chip.remove();
         chip.append(ok, no);
         wrap.append(chip);

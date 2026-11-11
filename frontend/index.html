@@ -16,11 +16,12 @@
   </div>
 </div>
 <script src="splash.js"></script>
-<header><h1 data-i18n="app">Kâtip</h1><button id="homeBtn" hidden data-i18n="all_recordings"></button>
+<script src="icons.js"></script>
+<header><h1 data-i18n="app">Kâtip</h1><button id="homeBtn" hidden data-icon="arrow-left" data-i18n="all_recordings"></button>
   <span class="spacer"></span>
   <button id="peopleBtn" data-i18n="people"></button>
   <select id="langSel"data-i18n-title="language"><option value="tr">TR</option><option value="en">EN</option></select>
-  <button id="aboutBtn" class="icon" data-i18n-title="about_title">ⓘ</button>
+  <button id="aboutBtn" class="icon" data-icon="info" data-i18n-title="about_title"></button>
   <button id="sysBtn" data-i18n="system">Sistem</button>
 </header>
 
@@ -64,8 +65,8 @@
   <div class="toolbar">
     <h2 id="title"></h2>
     <span class="spacer"></span>
-    <button id="undoBtn" class="icon" disabled data-i18n-title="undo_title">↶</button>
-    <button id="helpBtn" class="icon" data-i18n-title="shortcuts_title">⌨</button>
+    <button id="undoBtn" class="icon" disabled data-icon="undo" data-i18n-title="undo_title"></button>
+    <button id="helpBtn" class="icon" data-icon="keyboard" data-i18n-title="shortcuts_title"></button>
     <details class="menu"><summary data-i18n="export"></summary>
       <div>
         <label><span data-i18n="version"></span>
@@ -87,9 +88,9 @@
     <div class="searchbox">
       <input id="q" type="search" data-i18n-ph="q_ph">
       <span id="qCount"></span>
-      <button id="qPrev" class="small icon" data-i18n-title="prev_hit">↑</button>
-      <button id="qNext" class="small icon" data-i18n-title="next_hit">↓</button>
-      <button id="repToggle" class="small icon" data-i18n-title="find_replace">⇄</button>
+      <button id="qPrev" class="small icon" data-icon="chevron-up" data-i18n-title="prev_hit"></button>
+      <button id="qNext" class="small icon" data-icon="chevron-down" data-i18n-title="next_hit"></button>
+      <button id="repToggle" class="small icon" data-icon="replace" data-i18n-title="find_replace"></button>
     </div>
     <div class="searchbox" id="repBox" hidden>
       <input id="rep" data-i18n-ph="rep_ph">
@@ -113,7 +114,7 @@
 
 <footer id="player" hidden>
   <audio id="audio" preload="auto"></audio>
-  <button id="pp">▶</button>
+  <button id="pp" class="icon" data-icon="play"></button>
   <button id="back">−5s</button><button id="fwd">+5s</button>
   <span id="clock">00:00:00</span>
   <select id="speed"><option>0.75</option><option selected>1</option><option>1.25</option><option>1.5</option></select>×
@@ -130,7 +131,7 @@
     <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td data-i18n="k_search"></td></tr>
     <tr><td><kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd></td><td data-i18n="k_next"></td></tr>
     <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td data-i18n="k_undo"></td></tr>
-    <tr><td><kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>→</kbd></td><td data-i18n="k_seek"></td></tr>
+    <tr><td><kbd>Alt</kbd>+<kbd data-icon="arrow-left"></kbd> / <kbd data-icon="arrow-right"></kbd></td><td data-i18n="k_seek"></td></tr>
     <tr><td><kbd>Esc</kbd></td><td data-i18n="k_esc"></td></tr>
   </table>
   <p class="hint helptip" data-i18n="tip"></p>

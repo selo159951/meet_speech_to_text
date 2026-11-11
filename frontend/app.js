@@ -243,7 +243,7 @@ function renderSpeakers() {
       }
     }
     if (!mine.length) {
-      const del = el("button", { className: "small", textContent: "✕ " + t("remove_speaker") });
+      const del = el("button", { className: "small" }, icText("x", t("remove_speaker")));
       del.onclick = async () => { await checkpoint(); delete spkNames[i]; commit(t("speaker_removed")); };
       menu.append(del);
     }
@@ -252,7 +252,7 @@ function renderSpeakers() {
     const stats = el("span", { className: "stats", textContent: mine.length ? `${mmss(talk)} · ${Math.round((talk / total) * 100)}% · ${plural(mine.length, "line_1", "lines_n")}` : t("no_lines") });
     const card = el("div", { className: "spkcard " + spkClass(i) + (mine.length ? "" : " unused") },
       el("div", { className: "spkline" }, inp, more), stats);
-    window.peopleHooks?.speakerCard(i, card); // people.js: "%82" badge / "Selim olabilir? ✓"
+    window.peopleHooks?.speakerCard(i, card); // people.js: "%82" badge / "Selim olabilir?"
     box.append(card);
   }
   const add = el("button", { className: "icon", textContent: "+", title: t("add_speaker_title") });
@@ -261,7 +261,7 @@ function renderSpeakers() {
     const n = Math.max(-1, ...spkIds()) + 1; spkNames[n] = `Speaker ${n + 1}`;
     commit(t("added_speaker", { s: spkLabel(n) }));
   };
-  const det = el("button", { className: "icon", textContent: "✨", title: t("detect_names") + " - " + t("detect_title") });
+  const det = el("button", { className: "icon", title: t("detect_names") + " - " + t("detect_title") }, ic("user-search"));
   det.onclick = detectNames;
   box.append(el("div", { className: "spkbtns" }, add, det));
   const f = $("fSpk"), cur = f.value;
@@ -273,7 +273,7 @@ function renderSpeakers() {
 async function detectNames() {
   await checkpoint();
   const r = await call("detect_names", job.id);
-  const found = Object.entries(r.found).map(([k, v]) => `${spkLabel(k) || t("speaker_n", { n: +k + 1 })} → ${v}`);
+  const found = Object.entries(r.found).map(([k, v]) => `${spkLabel(k) || t("speaker_n", { n: +k + 1 })}: ${v}`);
   if (!found.length) { undoStack.pop(); updateUndo(); }
   applyJob(r.job);
   toast(found.length ? t("names_found", { s: found.join(", ") }) : t("no_names"), !!found.length);
@@ -301,15 +301,15 @@ function renderSegs() {
     txt.onkeydown = (e) => { if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); playRange(s.start, s.end); } };
     rev.onclick = () => { s.text_edited = s.text_original; txt.textContent = s.text_original; (dirty.texts ??= {})[s.id] = s.text_edited; mark(); scheduleSave(); };
     const act = el("div", { className: "actions" }, rev,
-      btn("＋", t("add_line"), () => addLine(s)),
-      btn("⤒", t("merge_up"), () => mergeUp(s)),
-      btn("🗑", t("delete_line"), () => deleteLine(s)));
+      btn("plus", t("add_line"), () => addLine(s)),
+      btn("merge-up", t("merge_up"), () => mergeUp(s)),
+      btn("trash", t("delete_line"), () => deleteLine(s)));
     mark();
     row.append(chip, sel, txt, act); box.append(row);
   }
   refreshSearch(false); // re-apply filters and search highlights on the new nodes
 }
-const btn = (label, title, fn) => { const b = el("button", { className: "small icon", textContent: label, title }); b.onclick = fn; return b; };
+const btn = (icon, title, fn) => { const b = el("button", { className: "small icon", title }, ic(icon)); b.onclick = fn; return b; };
 
 async function addLine(s) {
   await checkpoint();
@@ -485,7 +485,8 @@ audio.ontimeupdate = () => {
   const editing = document.activeElement?.classList.contains("txt");
   if (rowEl && $("follow").checked && !editing) rowEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
 };
-audio.onplay = () => ($("pp").textContent = "⏸"); audio.onpause = () => ($("pp").textContent = "▶");
+const setPP = (playing) => $("pp").replaceChildren(ic(playing ? "pause" : "play"));
+audio.onplay = () => setPP(true); audio.onpause = () => setPP(false);
 const togglePlay = () => { stopAt = null; audio.paused ? audio.play() : audio.pause(); };
 $("pp").onclick = togglePlay;
 $("back").onclick = () => (audio.currentTime = Math.max(0, audio.currentTime - 5));

@@ -3,7 +3,7 @@
 Object.assign(I18N.en, {
   system: "System", sys_title: "Your computer", sys_chip_title: "Open the System page",
   chip_gpu: "GPU", chip_gpu_vulkan: "GPU (Vulkan)", chip_cpu: "CPU",
-  v_ok: "✓ Your graphics card is good enough", v_tight: "⚠ Borderline — a smaller model is recommended",
+  v_ok: "Your graphics card is good enough", v_tight: "Borderline — a smaller model is recommended",
   v_cpu: "No usable graphics card — it will run on the processor (slower)",
   v_cpu_gpu_unused: "The graphics card cannot be used here — it will run on the processor (slower)",
   details: "Technical details", gpu: "Graphics card", cpu: "Processor", ram: "Memory (RAM)",
@@ -36,7 +36,7 @@ Object.assign(I18N.en, {
 Object.assign(I18N.tr, {
   system: "Sistem", sys_title: "Bilgisayarınız", sys_chip_title: "Sistem sayfasını aç",
   chip_gpu: "GPU", chip_gpu_vulkan: "GPU (Vulkan)", chip_cpu: "İşlemci",
-  v_ok: "✓ Ekran kartınız yeterli", v_tight: "⚠ Sınırda — daha küçük model önerilir",
+  v_ok: "Ekran kartınız yeterli", v_tight: "Sınırda — daha küçük model önerilir",
   v_cpu: "Ekran kartı kullanılamıyor, işlemciyle çalışacak (daha yavaş)",
   v_cpu_gpu_unused: "Ekran kartı burada kullanılamıyor, işlemciyle çalışacak (daha yavaş)",
   details: "Teknik ayrıntılar", gpu: "Ekran kartı", cpu: "İşlemci", ram: "Bellek (RAM)",
@@ -73,7 +73,7 @@ Object.assign(I18N.tr, {
   const ENG_KEY = { auto: "eng_auto", "ct2-cuda": "eng_ct2_cuda", "ct2-cpu": "eng_ct2_cpu", whispercpp: "eng_whispercpp" };
   const MODEL_KEY = { "large-v3-turbo": "m_large", medium: "m_medium", small: "m_small" };
   const MODEL_DESC = { "large-v3-turbo": "m_large_d", medium: "m_medium_d", small: "m_small_d" };
-  let info = null, llm = null, wiz = false, pollT = null, lastStatus = null;
+  let info = null, llm = null, wiz = false, pollT = null, lastStatus = null, techOpen = false;
 
   /* ---------- duration / ETA (also used by watch() in app.js) ---------- */
   function dur(s) {
@@ -142,7 +142,7 @@ Object.assign(I18N.tr, {
     const hw = info.hardware, plan = info.plan, v = info.verdict, set = info.settings;
     const kids = [el("h2", { textContent: t("sys_title") })];
     if (wiz) kids.push(wizard());
-    kids.push(el("div", { className: "verdict " + v.level, textContent: t(v.key) }));
+    kids.push(el("div", { className: "verdict " + v.level }, ic(v.level === "ok" ? "check" : "alert"), " " + t(v.key)));
     if (info.settings.engine !== "auto" && plan.fallback_from) kids.push(line(t("plan_fallback"), "warn"));
 
     // hardware cards
@@ -188,7 +188,7 @@ Object.assign(I18N.tr, {
     const rows = info.models.map((m) => {
       const dl = info.download, busy = dl.state === "running" && dl.model === m.id;
       const btn = el("button", { className: m.downloaded ? "" : "primary" });
-      if (m.current && m.downloaded) { btn.textContent = "✓ " + t("in_use"); btn.disabled = true; }
+      if (m.current && m.downloaded) { btn.replaceChildren(icText("check", t("in_use"))); btn.disabled = true; }
       else if (m.downloaded) { btn.textContent = t("use_model"); btn.onclick = async () => { info = await call("set_model", m.id); render(); }; }
       else if (busy) { btn.textContent = t("downloading"); btn.disabled = true; }
       else { btn.textContent = `${t("download")} (${gb(m.size)} GB)`; btn.disabled = dl.state === "running";
@@ -207,7 +207,7 @@ Object.assign(I18N.tr, {
 
     // technical details
     const tech = { plan, settings: set, engines: info.engines, hardware: hw };
-    kids.push(el("details", { className: "tech" }, el("summary", { textContent: t("details") }), el("pre", { textContent: JSON.stringify(tech, null, 2) })));
+    kids.push(el("details", { className: "tech", open: techOpen, ontoggle: (e) => { techOpen = e.target.open; } }, el("summary", { textContent: t("details") }), el("pre", { textContent: JSON.stringify(tech, null, 2) })));
     page.replaceChildren(...kids);
   }
 
@@ -228,7 +228,7 @@ Object.assign(I18N.tr, {
       else if (m.fit === "no") tags.push(t("llm_fit_no"));
       const meta = [m.size_gb ? m.size_gb + " GB" : "", tags.filter(Boolean).join(" · ")].filter(Boolean).join(" · ");
       const btn = el("button");
-      if (m.downloaded) { btn.textContent = "✓ " + t("downloaded"); btn.disabled = true; }
+      if (m.downloaded) { btn.replaceChildren(icText("check", t("downloaded"))); btn.disabled = true; }
       else if (busy) { btn.textContent = t("downloading"); btn.disabled = true; }
       else {
         btn.className = "primary";
@@ -260,7 +260,7 @@ Object.assign(I18N.tr, {
     const s2 = info.model_downloaded, s3 = tst.state === "done" || info.speed.source === "measured";
     const steps = [[true, "wiz_s1"], [s2, "wiz_s2"], [s3, "wiz_s3"]];
     const box = el("div", { className: "wiz" }, el("h3", { textContent: t("wiz_title") }),
-      el("ol", {}, ...steps.map(([ok, k]) => el("li", { className: ok ? "ok" : "", textContent: (ok ? "✓ " : "• ") + t(k) }))));
+      el("ol", {}, ...steps.map(([ok, k]) => el("li", { className: ok ? "ok" : "" }, ic(ok ? "check" : "dot"), " " + t(k)))));
     if (!s2 && dl.state !== "running") {
       const b = el("button", { className: "primary", textContent: t("wiz_download", { m: t(MODEL_KEY[rec.id]), s: gb(rec.size) + " GB" }) });
       b.onclick = async () => { await call("set_model", rec.id); await call("download_model", rec.id); refresh(); };

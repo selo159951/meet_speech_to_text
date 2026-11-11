@@ -41,7 +41,7 @@
       const tags = [];
       if (p.weak) tags.push(el("span", { className: "ptag warn", textContent: t("weak_voice") }));
       for (const w of p.warnings) tags.push(el("span", { className: "ptag warn", textContent: qLabel(w) }));
-      if (!p.weak && !p.warnings.length) tags.push(el("span", { className: "ptag ok", textContent: "✓" }));
+      if (!p.weak && !p.warnings.length) tags.push(el("span", { className: "ptag ok" }, ic("check")));
       const addFile = el("button", { className: "small", textContent: t("from_file") });
       addFile.onclick = () => run(() => call("add_person_sample_file", p.id));
       const addMic = el("button", { className: "small", textContent: t("from_mic") });
@@ -70,7 +70,7 @@
     }
     const name = el("input", { placeholder: t("person_name_ph"), className: "pname" });
     const file = el("button", { textContent: t("from_file") });
-    const mic = el("button", { textContent: "🎤 " + t("from_mic") });
+    const mic = el("button", {}, icText("mic", t("from_mic")));
     const cancel = el("button", { className: "small", textContent: t("cancel_btn") });
     const need = () => { const n = name.value.trim(); if (!n) { name.focus(); S.error = t("name_needed"); draw(); } return n; };
     file.onclick = () => { const n = need(); if (n) run(() => call("add_person_sample_file", null, n)); };
@@ -163,12 +163,12 @@
       go.onclick = () => nm.value.trim() ? save1(null, nm.value.trim()) : (toast(t("name_needed")), nm.focus());
       menu.append(el("div", { className: "prow" }, nm, go));
       for (const p of S.list) {
-        const b = el("button", { className: "small", textContent: "→ " + p.name });
+        const b = el("button", { className: "small" }, icText("arrow-right", p.name));
         b.onclick = () => save1(p.id, null);
         menu.append(b);
       }
       if (S.list.length) {
-        const rm = el("button", { className: "small", textContent: "↻ " + t("rematch") });
+        const rm = el("button", { className: "small" }, icText("refresh", t("rematch")));
         rm.onclick = async () => {
           await save(); toast(t("working"));
           try { applyJob(await call("rematch_job", job.id)); toast(t("rematched")); } catch (e) { toast(msg(e)); }
@@ -182,7 +182,7 @@
         card.querySelector(".stats")?.append(el("span", {
           className: "vbadge", textContent: `%${Math.round(m.score * 100)}`, title: t("match_title", { p: Math.round(m.score * 100) }) }));
       } else if (s && isDefault(spkNames[i])) {
-        const b = el("button", { className: "small vsuggest", textContent: t("maybe_person", { n: s.name }) + " ✓", title: t("accept_title") });
+        const b = el("button", { className: "small vsuggest", title: t("accept_title") }, t("maybe_person", { n: s.name }) + " ", ic("check"));
         b.onclick = async () => {
           await save();
           try { applyJob(await call("accept_suggestion", job.id, i, s.person_id)); } catch (e) { toast(msg(e)); }

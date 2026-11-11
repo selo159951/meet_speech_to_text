@@ -55,7 +55,8 @@ def test_choose_device():
     nv = gpu("NVIDIA RTX 1000 Ada Generation Laptop GPU", 6)
     onboard = gpu("Intel(R) Arc(TM) Pro Graphics", 48, integrated=True)
     assert llm.choose_device(hw(onboard, nv), devs, 3.6) == ("vulkan", 1)
-    assert llm.choose_device(hw(onboard, nv), devs, 6.0) == ("cpu", None)  # 5.0 GB free only
+    assert llm.choose_device(hw(onboard, nv), devs, 6.0) == ("vulkan", 1)  # does not fit completely: partial offload
+    assert llm.choose_device(hw(onboard, nv), [{**devs[1], "free_mb": 2000}] if len(devs) > 1 else devs, 6.0)[0] == "cpu"  # almost no room
     assert llm.choose_device(hw(onboard), devs, 3.6) == ("cpu", None)
     assert llm.choose_device(hw(), devs, 3.6) == ("cpu", None)
     assert llm.choose_device(hw(nv), [], 3.6) == ("cpu", None)
@@ -218,3 +219,15 @@ def test_chat_format_is_written_for_known_models():
     p, s = llm.wrap("gemma-3-4b", "Soru", "Sistem")
     assert s is None and p == "<start_of_turn>user\nSistem\n\nSoru<end_of_turn>\n<start_of_turn>model\n"
     assert llm.wrap("gemma-4-e4b", "Soru", "Sistem") == ("Soru", "Sistem")
+
+
+def test_plan_offloads_part_of_a_big_model():
+    nv = gpu("RTX 1000", 6)
+    devs = [{"index": 1, "name": "RTX 1000", "total_mb": 6000, "free_mb": 5000}]
+    import backend.llm.catalog as cat
+    assert llm.choose_device(hw(nv), devs, 7.0) == ("vulkan", 1)
+    p = {"path": "m", "device": "vulkan", "gpu_index": 1, "ngl": "auto"}
+    cmd = llm.build_command(p, "p", None, None, 10, 0.0, 4096)
+    assert cmd[cmd.index("-ngl") + 1] == "auto" and cmd[cmd.index("-dev") + 1] == "Vulkan1"
+    p["ngl"] = "999"
+    assert llm.build_command(p, "p", None, None, 10, 0.0, 4096)[cmd.index("-ngl") + 1] == "999"

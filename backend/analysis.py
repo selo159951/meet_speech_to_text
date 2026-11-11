@@ -477,6 +477,12 @@ def _run(job_id: str, cancel, generate, t0: float) -> None:
         check()
         return generate(prompt, schema=schema, system=SYSTEM[LANG], max_tokens=max_tokens, cancel=cancel)
 
+    try:  # the speech model sits on the card after a transcription; the analysis model needs that room
+        from . import asr
+
+        asr.release()
+    except Exception:
+        pass
     job = store.read_transcript(job_id)
     segments, speakers = job.get("segments") or [], dict(job.get("speakers") or {})
     if not segments:

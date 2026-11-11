@@ -1,7 +1,7 @@
 /* UI translations. t("key", {n: 3}) fills {n}. HTML uses data-i18n / data-i18n-ph / data-i18n-title. */
 const I18N = {
   en: {
-    app: "Kâtip", app_subtitle: "Meeting scribe", all_recordings: "← All recordings",
+    app: "Kâtip", app_subtitle: "Meeting scribe", all_recordings: "All recordings",
     drop: "Drag & drop an audio or video file here", or: "or", browse: "browse",
     prev_recordings: "Previous recordings", jq_ph: "Search names, speakers or what was said…",
     all_statuses: "All statuses", st_done: "Done", st_running: "In progress", st_error: "Failed", st_queued: "Waiting",
@@ -17,8 +17,8 @@ const I18N = {
     stage_queued: "Waiting…", stage_converting: "Reading audio…",
     stage_loading_model: "Loading speech model (first run downloads it, can take a few minutes)…",
     stage_transcribing: "Transcribing", stage_diarizing: "Identifying speakers",
-    undo: "↶ Undo", undo_title: "Undo last change (Ctrl+Z)", undo_short: "Undo", undone: "Undone",
-    shortcuts: "⌨ Shortcuts", shortcuts_title: "Keyboard shortcuts", about: "ⓘ About",
+    undo: "Undo", undo_title: "Undo last change (Ctrl+Z)", undo_short: "Undo", undone: "Undone",
+    shortcuts: "Shortcuts", shortcuts_title: "Keyboard shortcuts", about: "About",
     export: "Export", version: "Version", edited: "Edited", original: "Original (model)", both: "Both",
     format: "Format", srt: "SRT (subtitles)", save_as: "Save…",
     export_analysis: "Analysis", export_analysis_hint: "No finished analysis for this recording yet.",
@@ -39,7 +39,7 @@ const I18N = {
     add_line: "Add an empty line below", merge_up: "Merge with the line above", delete_line: "Delete this line",
     line_given: "Line given to {s}", line_added: "Line added", first_line: "This is the first line",
     merged: "Merged into {s}'s line", line_deleted: "Line deleted",
-    saving: "Saving…", saved: "Saved ✓", save_failed: "Save failed",
+    saving: "Saving…", saved: "Saved", save_failed: "Save failed",
     type_find: "Type what to find in the search box first", nothing_replace: "Nothing to replace",
     replaced_n: "Replaced in {n} lines", replaced_1: "Replaced in 1 line",
     who_said: "Who said this?", given_to: "Given to {s}",
@@ -91,7 +91,7 @@ const I18N = {
     an_contribution: "Contribution", an_gained: "Gained",
     an_evidence: "Evidence", an_owner: "Owner", an_asker: "Asked by", an_due: "Due",
     line_chip: "line {n}", an_name_suggestions: "Name suggestions",
-    an_suggestion: "{s} → maybe {n}?", an_accept: "Use this name", an_dismiss: "Dismiss",
+    an_suggestion: "{s}: maybe {n}?", an_accept: "Use this name", an_dismiss: "Dismiss",
     // ---- system: analysis model ----
     llm_title: "Analysis model (AI)", llm_engine_missing: "The analysis engine is not included in this version",
     llm_device: "Runs on", llm_active: "Active model", llm_auto: "Automatic",
@@ -99,7 +99,7 @@ const I18N = {
     llm_fit_tight: "tight on this graphics card", llm_fit_no: "too big for this graphics card",
   },
   tr: {
-    app: "Kâtip", app_subtitle: "Toplantı kâtibi", all_recordings: "← Tüm kayıtlar",
+    app: "Kâtip", app_subtitle: "Toplantı kâtibi", all_recordings: "Tüm kayıtlar",
     drop: "Ses veya video dosyasını buraya sürükleyip bırakın", or: "veya", browse: "dosya seçin",
     prev_recordings: "Önceki kayıtlar", jq_ph: "Kayıt adı, konuşmacı veya konuşmanın içinde ara…",
     all_statuses: "Tüm durumlar", st_done: "Tamamlandı", st_running: "İşleniyor", st_error: "Hata", st_queued: "Sırada",
@@ -115,8 +115,8 @@ const I18N = {
     stage_queued: "Sırada…", stage_converting: "Ses okunuyor…",
     stage_loading_model: "Konuşma modeli yükleniyor (ilk seferde indirilir, birkaç dakika sürebilir)…",
     stage_transcribing: "Yazıya dökülüyor", stage_diarizing: "Konuşmacılar ayırt ediliyor",
-    undo: "↶ Geri al", undo_title: "Son değişikliği geri al (Ctrl+Z)", undo_short: "Geri al", undone: "Geri alındı",
-    shortcuts: "⌨ Kısayollar", shortcuts_title: "Klavye kısayolları", about: "ⓘ Hakkında",
+    undo: "Geri al", undo_title: "Son değişikliği geri al (Ctrl+Z)", undo_short: "Geri al", undone: "Geri alındı",
+    shortcuts: "Kısayollar", shortcuts_title: "Klavye kısayolları", about: "Hakkında",
     export: "Dışa aktar", version: "Sürüm", edited: "Düzenlenmiş", original: "Orijinal (model)", both: "İkisi de",
     format: "Biçim", srt: "SRT (altyazı)", save_as: "Kaydet…",
     export_analysis: "Analiz", export_analysis_hint: "Bu kayıt için henüz tamamlanmış bir analiz yok.",
@@ -137,7 +137,7 @@ const I18N = {
     add_line: "Altına boş satır ekle", merge_up: "Üstteki satırla birleştir", delete_line: "Bu satırı sil",
     line_given: "Satır {s} konuşmacısına verildi", line_added: "Satır eklendi", first_line: "Bu zaten ilk satır",
     merged: "{s} konuşmacısının satırıyla birleştirildi", line_deleted: "Satır silindi",
-    saving: "Kaydediliyor…", saved: "Kaydedildi ✓", save_failed: "Kaydedilemedi",
+    saving: "Kaydediliyor…", saved: "Kaydedildi", save_failed: "Kaydedilemedi",
     type_find: "Önce arama kutusuna aranacak metni yazın", nothing_replace: "Değiştirilecek bir şey yok",
     replaced_n: "{n} satırda değiştirildi", replaced_1: "1 satırda değiştirildi",
     who_said: "Bunu kim söyledi?", given_to: "{s} konuşmacısına verildi",
@@ -189,7 +189,7 @@ const I18N = {
     an_contribution: "Katkısı", an_gained: "Kazanımı",
     an_evidence: "Kanıt", an_owner: "Sorumlu", an_asker: "Soruyu soran", an_due: "Vade",
     line_chip: "satır {n}", an_name_suggestions: "İsim önerileri",
-    an_suggestion: "{s} → {n} olabilir?", an_accept: "Bu ismi kullan", an_dismiss: "Gizle",
+    an_suggestion: "{s}: {n} olabilir mi?", an_accept: "Bu ismi kullan", an_dismiss: "Gizle",
     // ---- sistem: analiz modeli ----
     llm_title: "Analiz modeli (yapay zekâ)", llm_engine_missing: "Bu sürümde analiz motoru yok",
     llm_device: "Çalıştığı yer", llm_active: "Etkin model", llm_auto: "Otomatik",
@@ -209,4 +209,5 @@ function applyI18n(root = document) {
   root.querySelectorAll("[data-i18n-ph]").forEach((e) => (e.placeholder = t(e.dataset.i18nPh)));
   root.querySelectorAll("[data-i18n-title]").forEach((e) => (e.title = t(e.dataset.i18nTitle)));
   document.title = t("app");
+  hydrateIcons(root);
 }
