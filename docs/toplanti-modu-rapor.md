@@ -84,3 +84,10 @@ Gerçek kayıtlarındaki bir analizde (12 saniyelik deneme, işlemcide 9B) 146 s
 - **Çok kısa kayıtlar** (60 sn altı ya da 6 satırdan az): puan ve kişi değerlendirmesi verilmez, "kayıt çok kısa" notu çıkar; böylece küçük örnekler hakkında uydurma yorum yazılmaz.
 
 Sonuç (Qwen3.5 4B, kurgusal toplantı, 3 koşu, Vulkan, 67-90 sn): isim 3/3, görev 6/6 (kişi, tarih, satır doğru), önemli karar 4/4, uydurma sayı yok. Hâlâ geçerli sınırlar: "cevapsız sorular" koşudan koşuya değişir; gerçek toplantılarla (üst üste konuşma, yazı hataları) denenmedi.
+
+## Konuşmacı ayırma ve isimlendirme turu (11 Kasım)
+Gerçek bir kayıt (17 dk, ~20 kişilik öğretmen-öğrenci toplantısı) kopyası üzerinde denendi:
+- **3 konuşmacı sınırı kaldırıldı.** Eski kod 3'ten fazla ses bulunca zorla 3'e indiriyordu; 15 kişi tek konuşmacı oldu. Artık gerçekten çok konuşan kişiler (en fazla 20) ayrı kalıyor, birkaç saniyelik yan sesler en yakın gerçek konuşmacıya katılıyor. Sonuç: 3 → 19 konuşmacı. 22 tanıtım satırının 17'si ayrı konuşmacıya düştü (tavan ~19-20; bazı öğretmenler birden çok kez konuşuyor).
+- **Daha iyi ses modeli arandı, bulunamadı.** Resmî sherpa-onnx sürümlerinden 5 aday indirildi (WeSpeaker ResNet34 ve CAM++, 3D-Speaker CAM++ Çince+İngilizce, 3D-Speaker ERes2Net İngilizce, NeMo TitaNet small) ve 5 eşik değerinde denendi. Kullandığımız model (3D-Speaker ERes2Net, eşik 0,6) hepsinin en iyisiydi (17/22). Model değiştirilmedi.
+- **İsim kuralları sıkılaştı:** iki farklı isimle kendini tanıtan ses (birden çok kişi karışmış) isimsiz kalır; model "Elif" gibi bir adı, o cümleyi başkası söylediyse ya da konuşmacı başkasından söz ediyorsa ("Paula'ya geçelim") vermez; okul/yer adları ("Ayla Lisesi") kişi sayılmaz; adın kayıtta gerçekten geçmesi şart; tanıtım/seslenme olmayan adlar yalnızca öneri olur. Büyük harfsiz yazılmış tanıtımlar da ("my name is melisa") bulunur.
+- Sonuç: aynı kayıtta 19 konuşmacıdan 17'si doğru adla, 2'si isimsiz ("Konuşmacı 3", "Konuşmacı 19"); yanlış ad kalmadı. Bilinen zayıflık: kendini tanıtmayan kişiler isimsiz kalır; transkriptte Türkçe özel adlar bozuk yazılabilir (okul adları gibi).
