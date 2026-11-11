@@ -28,11 +28,13 @@ Test: 3 kişilik, 10 dakikalık **kurgusal** Türkçe toplantı (`tests/data/mee
 
 | Model | İndirme | Bu bilgisayarda | Süre | Karar | Görev | Not |
 |---|---|---|---|---|---|---|
-| Gemma 3 4B | 2,5 GB | ekran kartı | 53–80 sn | 4/4 (+2–3 fazla) | 5/5, tarih ve satır kayık | Türkçesi akıcı ama koşudan koşuya değişiyor |
-| **Qwen3.5 4B** | 2,7 GB | ekran kartı | 58–76 sn | 3/4 | **5/5, kişi + tarih + satır doğru** (5 koşunun 5'inde) | en tutarlı küçük model |
-| Gemma 4 E4B | 5,0 GB | işlemci (karta sığmıyor) | 195 sn | **4/4 + 2 doğru ek** | 8, bir kısmı tekrar | en iyi üslup; Elif/Burak adlarını ters verdi |
-| Qwen3.5 9B | 5,7 GB | işlemci (karta sığmıyor) | 372 sn | 5 karar, hepsi doğru | 6, tarihler doğru | 4B'ye göre belirgin üstünlük yok, çok daha yavaş |
-| Gemma 4 12B | 7,0 GB | işlemci | GEMMA12_SURE | GEMMA12_KARAR | GEMMA12_GOREV | GEMMA12_NOT |
+| **Qwen3.5 4B** | 2,7 GB | ekran kartı | 58–79 sn | 3/4 + 1 doğru ek | **5/5, kişi + tarih + satır doğru** (bütün koşularda) | en tutarlısı; kişi kartları temiz ve kişiye özel |
+| Gemma 3 4B | 2,5 GB | ekran kartı | 53–80 sn | **4/4** + 1 doğru ek | 5/5 + 2 fazla (biri yanlış kişiye) | Türkçesi akıcı; "cevapsız sorular" çok gürültülü (8 madde) |
+| Gemma 4 E4B | 5,0 GB | işlemci (karta sığmıyor) | 195 sn | 4/4 + 2 doğru ek | 8, bir kısmı tekrar | en iyi üslup; Elif/Burak adlarını ters verdi. Sohbet biçimi olmadan ölçüldü |
+| Qwen3.5 9B | 5,7 GB | işlemci (karta sığmıyor) | 332 sn | **4/4** + 1 doğru ek | 5/5 + 1 ek, tarihler doğru | en isabetli sonuç; kişi kartları da en iyisi. Kartta (8 GB+) çok daha hızlı olması beklenir, ölçülemedi |
+| Gemma 4 12B | 7,0 GB | işlemci | 13 dk, **başarısız** | – | – | bozuk JSON döndürdü; listeden çıkarıldı |
+
+Önemli not: ölçümlerin ilk turunda motor, modelleri kendi sohbet biçimleri olmadan çalıştırıyordu. Bunu fark edip Qwen (ChatML) ve Gemma 3 için düzelttim; yukarıdaki Qwen3.5 4B ve Gemma 3 4B satırları düzeltmeden **sonraki** sonuçlardır. Gemma 4'ün biçiminden emin olmadığım için o modeller düz tamamlama olarak çalışıyor; bu yüzden Gemma 4 satırları modele haksızlık ediyor olabilir.
 
 Ek ölçümler (Qwen3.5 4B):
 - 80 dakikalık metin: ekran kartında **4 dakika** (ses dakikası başına ~3 sn).
@@ -41,7 +43,7 @@ Ek ölçümler (Qwen3.5 4B):
 
 ### Seçilen varsayılanlar
 - **Küçük (varsayılan): Qwen3.5 4B.** 4 GB ve üstü kartlara sığar, görev ve isimlerde en tutarlısı.
-- **Büyük (10 GB+ ekran belleği): BUYUK_VARSAYILAN.**
+- **Büyük (8 GB+ ekran belleği): Qwen3.5 9B.** Planda 10 GB+ için 12B sınıfı düşünülmüştü; Gemma 4 12B ölçümde bozuk çıktı verdiği için büyük seçenek 9B oldu.
 - Sistem sayfasından istenen model elle seçilebilir; karta sığmayan model işlemcide çalışır ("sınırda" etiketi).
 
 ## Ölçüm sırasında bulunup düzeltilenler
@@ -51,10 +53,11 @@ Ek ölçümler (Qwen3.5 4B):
 4. Model bazen talimat cümlesini cevap diye geri yazıyordu → talimat metniyle aynı olan çıktılar atılıyor; boş kalan kişi kartı bölüm notlarından dolduruluyor.
 5. İngilizce test kaydında model, talimattaki örnek adı ("Elif") konuşmacıya verdi → kayıtta geçmeyen ad kabul edilmiyor.
 6. İşlemci modunda motor yine de ekran kartına iş veriyordu → kapatıldı.
-7. Deneme paketi 11 GB çıktı (indirdiğim dil modelleri pakete giriyordu) → paket yalnızca konuşmacı modellerini içeriyor; dil modeli uygulamadan indiriliyor.
+7. Motor, modelleri sohbet biçimi olmadan çalıştırıyordu (talimatı geri yazma ve uydurma ayrıntıların asıl nedeni) → Qwen ve Gemma 3 için biçim elle yazılıyor; kalite belirgin arttı.
+8. Deneme paketi 11 GB çıktı (indirdiğim dil modelleri pakete giriyordu) → paket yalnızca konuşmacı modellerini içeriyor; dil modeli uygulamadan indiriliyor.
 
 ## Bilinen sınırlar (dürüstçe)
-- **4B model hata yapar.** Görevler ve isimler güvenilir çıktı; ama "cevapsız sorular" koşudan koşuya değişiyor (0–3 madde), kişi "kazanımı" metinlerinde ara sıra uydurma ayrıntı oldu (ör. "2.3 sürümü"), 4 karardan biri ("offline mod 2.5'e") çoğu koşuda atlandı.
+- **4B model hata yapar.** Görevler ve isimler güvenilir çıktı; ama "cevapsız sorular" zayıf: son sürümde Qwen iki gerçek cevapsız soruyu da kaçırdı (liste boş), Gemma 3 ise 8 madde yazdı. 4 karardan biri ("offline mod 2.5'e") Qwen'de çoğu koşuda atlandı.
 - **Toplantı puanı ayırt edici değil:** model hep 85–98 veriyor (konu dışı sohbet olsa bile). Yalnız "denge" kesin sayıdan geliyor. Puanı göstergeden çok süs olarak görmek gerek; istenirse sayılara dayalı hâle getirilebilir.
 - Ölçüm tek bir kurgusal toplantıyla yapıldı; gerçek toplantılarda (üst üste konuşma, yazım hataları) sonuç daha kötü olabilir.
 - Büyük modeller bu bilgisayarda yalnızca işlemcide denendi (kart 6 GB). 10 GB+ kartta hızları ölçülmedi.
