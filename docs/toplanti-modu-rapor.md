@@ -91,3 +91,14 @@ Gerçek bir kayıt (17 dk, ~20 kişilik öğretmen-öğrenci toplantısı) kopya
 - **Daha iyi ses modeli arandı, bulunamadı.** Resmî sherpa-onnx sürümlerinden 5 aday indirildi (WeSpeaker ResNet34 ve CAM++, 3D-Speaker CAM++ Çince+İngilizce, 3D-Speaker ERes2Net İngilizce, NeMo TitaNet small) ve 5 eşik değerinde denendi. Kullandığımız model (3D-Speaker ERes2Net, eşik 0,6) hepsinin en iyisiydi (17/22). Model değiştirilmedi.
 - **İsim kuralları sıkılaştı:** iki farklı isimle kendini tanıtan ses (birden çok kişi karışmış) isimsiz kalır; model "Elif" gibi bir adı, o cümleyi başkası söylediyse ya da konuşmacı başkasından söz ediyorsa ("Paula'ya geçelim") vermez; okul/yer adları ("Ayla Lisesi") kişi sayılmaz; adın kayıtta gerçekten geçmesi şart; tanıtım/seslenme olmayan adlar yalnızca öneri olur. Büyük harfsiz yazılmış tanıtımlar da ("my name is melisa") bulunur.
 - Sonuç: aynı kayıtta 19 konuşmacıdan 17'si doğru adla, 2'si isimsiz ("Konuşmacı 3", "Konuşmacı 19"); yanlış ad kalmadı. Bilinen zayıflık: kendini tanıtmayan kişiler isimsiz kalır; transkriptte Türkçe özel adlar bozuk yazılabilir (okul adları gibi).
+
+## Türkçe konuşma tanıma modelleri karşılaştırması (11 Kasım)
+Hugging Face'te faster-whisper formatında Türkçe ince ayarlı modeller var. İkisi denendi (aynı 12 kısa ses: 5 temiz yapay ses, bunların telefon bandı + gürültülü hâlleri, karışık TR+EN cümle ve senin gerçek sesin; ölçü: kelime hata oranı, düşük iyi):
+
+| Model | Temiz | Gürültülü | Gerçek ses (13 sn) | Hız |
+|---|---|---|---|---|
+| **large-v3-turbo (şu anki)** | **%1,6** | %4,0 | **%3,3** | 13 sn |
+| large-v3 Türkçe ince ayar (turkmedstt tabanlı, int8) | %3,0 | **%3,3** | %6,7 | 32 sn (2,5 kat yavaş) |
+| large-v3-turbo Türkçe ince ayar (selimc tabanlı) | %6,7 | %4,9 | %16,7 | 12 sn |
+
+Sonuç: şu anki model değiştirilmedi. Örnek küçük ve çoğu yapay ses; gerçek toplantılarla fark değişebilir. Bir "Türkçe uzman" model denemek istenirse en iyi aday large-v3 ince ayarı; gürültüde biraz iyi, ama yavaş.
