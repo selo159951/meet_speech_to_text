@@ -69,6 +69,11 @@ const I18N = {
     saved_voice: "Voice saved for {n}", rematch: "Match with saved people again", rematched: "Voices checked",
     maybe_person: "{n} maybe?", accept_title: "Click to use this name", match_title: "Recognised by voice ({p}% similar)",
     cancel_btn: "Cancel", working: "Working...",
+    auto_tag: "Automatic", auto_tag_title: "Learned from a meeting, not confirmed yet",
+    auto_seen_n: "Automatic - {n} meetings", confirm_person: "Confirm", confirm_all: "Confirm all",
+    learned_n: "{n} people saved to People: {s}", learned_1: "1 person saved to People: {s}",
+    learn_people: "Learn people automatically",
+    learn_people_hint: "The voices of people who introduce themselves are saved to People so they are recognised in later meetings",
     // ---- meeting mode / analysis ----
     tab_text: "Text", tab_analysis: "Analysis",
     meeting_mode: "Meeting mode", meeting_mode_hint: "The analysis is prepared in the background after the recording is transcribed.",
@@ -175,6 +180,11 @@ const I18N = {
     saved_voice: "{n} için ses kaydedildi", rematch: "Kayıtlı kişilerle yeniden eşleştir", rematched: "Sesler kontrol edildi",
     maybe_person: "{n} olabilir mi?", accept_title: "Bu ismi kullanmak için tıklayın", match_title: "Sesten tanındı (%{p} benzer)",
     cancel_btn: "İptal", working: "Çalışıyor...",
+    auto_tag: "Otomatik", auto_tag_title: "Toplantıdan öğrenildi, henüz onaylanmadı",
+    auto_seen_n: "Otomatik - {n} toplantı", confirm_person: "Onayla", confirm_all: "Hepsini onayla",
+    learned_n: "{n} kişi Kişiler'e kaydedildi: {s}", learned_1: "1 kişi Kişiler'e kaydedildi: {s}",
+    learn_people: "Kişileri otomatik öğren",
+    learn_people_hint: "Kendini tanıtan kişilerin sesi Kişiler'e kaydedilir; sonraki toplantılarda tanınırlar",
     // ---- toplantı modu / analiz ----
     tab_text: "Metin", tab_analysis: "Analiz",
     meeting_mode: "Toplantı modu", meeting_mode_hint: "Kayıt yazıya dökülünce analiz de arkada hazırlanır.",
