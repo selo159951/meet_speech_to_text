@@ -35,8 +35,9 @@ def main():
     if sys.platform == "win32":
         install_virtual_hosts()
     api = Api()
+    # starts maximized; the size below is what "restore down" gives
     window = webview.create_window("Kâtip", START_URL, width=1180, height=820,
-                                   min_size=(720, 560), js_api=api)
+                                   min_size=(720, 560), maximized=True, js_api=api)
     api._get_window = lambda: window
     attached = []
 
