@@ -16,7 +16,7 @@ const SAMPLE_ANALYSIS = {
   open_questions: [{ asker: 2, text: "Ses kaydı saklanacak mı?", line: 55 }],
   people: [{ id: 0, contribution: "Takvimi netleştirdi.", gained: "Test yükünü paylaştı.", evidence: [12, 40] },
            { id: 1, contribution: "Teknik riskleri anlattı.", gained: "Sorumluluk aldı.", evidence: [23] }],
-  score: { overall: 68, decisions: 70, focus: 60, repetition: 75, balance: 55,
+  score: { overall: 68, decisions: 70, tasks: 60, questions: 80, repetition: 75, balance: 55,
     comment: "Verimli ama zaman zaman dağılan bir toplantı.", tips: ["Gündemi baştan paylaşın.", "Her konuyu bir kararla kapatın."] },
   name_suggestions: [{ speaker: 1, name: "Burak", confidence: 0.8, line: 9, source: "llm" }],
 };
@@ -165,19 +165,23 @@ const SAMPLE_ANALYSIS = {
       el("div", { className: "ahead" }, ...meta.map((x) => el("span", { textContent: x }))),
       el("div", { className: "ameta note", textContent: t("an_disclaimer") })));
 
-    // meeting score
+    // meeting score (computed from the transcript, see backend/analysis.py compute_score)
     const sc = a.score || {};
+    if (a.short) out.push(el("div", { className: "acard" }, el("p", { className: "ameta note", textContent: t("an_short") })));
+    if (a.warnings?.length) out.push(el("div", { className: "acard" }, el("p", { className: "ameta note", textContent: t("an_warnings") })));
     const big = el("div", { className: "big" });
     big.append(String(sc.overall ?? "—"), el("small", { textContent: " / 100" }));
     const mini = el("div", { className: "amini" });
-    for (const [key, label] of [["decisions", "an_decisions"], ["focus", "an_focus"], ["repetition", "an_repetition"], ["balance", "an_balance"]]) {
+    for (const [key, label] of [["decisions", "an_decisions"], ["tasks", "an_tasks"], ["questions", "an_questions"], ["repetition", "an_repetition"], ["balance", "an_balance"]]) {
+      if (sc[key] === null || sc[key] === undefined) continue;  // nothing to judge (no tasks, no questions ...)
       const v = Math.max(0, Math.min(100, Number(sc[key]) || 0));
-      mini.append(el("div", { className: "row" },
+      mini.append(el("div", { className: "row", title: t(label + "_hint") },
         el("span", { textContent: t(label) }),
         el("div", { className: "bar" }, el("div", { style: `width:${v}%` })),
-        el("span", { className: "ameta", textContent: sc[key] === undefined ? "—" : String(sc[key]) })));
+        el("span", { className: "ameta", textContent: String(sc[key]) })));
     }
     const scoreCard = el("div", { className: "acard" }, el("h3", { textContent: t("an_score") }), el("div", { className: "ascore" }, big, mini));
+    scoreCard.append(el("p", { className: "ameta note", textContent: t("an_score_how") }));
     if (sc.comment) scoreCard.append(el("p", { textContent: sc.comment }));
     if (sc.tips?.length) scoreCard.append(el("div", { className: "alabel", textContent: t("an_tips") }),
       el("ul", { className: "alist" }, ...sc.tips.map((x) => el("li", { textContent: x }))));

@@ -50,7 +50,7 @@ ANALYSIS = {
         {"id": 0, "contribution": "Bütçeyi açıkladı.", "gained": "Plan netleşti.", "evidence": [1]},
         {"id": 1, "contribution": "Görev aldı.", "gained": "", "evidence": []},
     ],
-    "score": {"overall": 68, "decisions": 70, "focus": 60, "repetition": 75, "balance": 55,
+    "score": {"overall": 68, "decisions": 70, "tasks": 60, "questions": 80, "repetition": 75, "balance": 55,
               "comment": "Verimli bir toplantı.", "tips": ["Daha kısa konuşun."]},
 }
 

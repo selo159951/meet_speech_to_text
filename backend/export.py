@@ -45,7 +45,7 @@ ANALYSIS_LABELS = {
     "en": {
         "disclaimer": "AI-generated, may contain mistakes",
         "score": "Meeting score", "overall": "Overall", "comment": "Comment", "tips": "Tips",
-        "sub_decisions": "Decisions", "sub_focus": "Focus", "sub_repetition": "Repetition",
+        "sub_decisions": "Decisions", "sub_tasks": "Task clarity", "sub_questions": "Questions answered", "sub_repetition": "Repetition",
         "sub_balance": "Balance", "summary": "Summary", "topics": "Topics", "decisions": "Decisions",
         "tasks": "Tasks", "open_questions": "Open questions", "people": "People",
         "owner": "Owner", "due": "Due", "asker": "Asked by",
@@ -55,7 +55,7 @@ ANALYSIS_LABELS = {
     "tr": {
         "disclaimer": "Yapay zekâ yorumudur, hata içerebilir",
         "score": "Toplantı puanı", "overall": "Genel", "comment": "Yorum", "tips": "İpuçları",
-        "sub_decisions": "Kararlar", "sub_focus": "Odak", "sub_repetition": "Tekrar",
+        "sub_decisions": "Kararlar", "sub_tasks": "Görev netliği", "sub_questions": "Cevaplanan sorular", "sub_repetition": "Tekrar",
         "sub_balance": "Denge", "summary": "Özet", "topics": "Konular", "decisions": "Kararlar",
         "tasks": "Görevler", "open_questions": "Açık sorular", "people": "Kişiler",
         "owner": "Sorumlu", "due": "Vade", "asker": "Soruyu soran",
@@ -93,7 +93,7 @@ def _analysis_blocks(job: dict, analysis: dict, lang: str) -> list[tuple[str, st
         blocks.append(("h2", L["score"]))
         if score.get("overall") is not None:
             blocks.append(("p", f"{L['overall']}: {score['overall']}"))
-        for key, field in (("sub_decisions", "decisions"), ("sub_focus", "focus"),
+        for key, field in (("sub_decisions", "decisions"), ("sub_tasks", "tasks"), ("sub_questions", "questions"),
                            ("sub_repetition", "repetition"), ("sub_balance", "balance")):
             if score.get(field) is not None:
                 blocks.append(("bullet", f"{L[key]}: {score[field]}"))

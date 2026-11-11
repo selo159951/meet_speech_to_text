@@ -170,14 +170,16 @@ def wrap(model: str, prompt: str, system: str | None) -> tuple[str, str | None]:
     return t.format(system=system or "You are a helpful assistant.", prompt=prompt), None
 
 
-def generate(prompt: str, schema: dict | None = None, system: str | None = None,
-             max_tokens: int = 2048, temperature: float = 0.2,
-             cancel: threading.Event | None = None) -> dict | str:
-    if not binary_path().is_file():
-        raise LlmError(f"llama.cpp binary not found: {binary_path()}")
-    p = plan()
+CALL_TIMEOUT = 25 * 60  # one model call must never hang the analysis for ever
+
+
+def _run_once(p: dict, prompt: str, schema, system: str | None, max_tokens: int, temperature: float,
+              cancel: threading.Event | None, timeout: float) -> str:
+    """One llama-completion run; returns the raw output text."""
+    import time
+
     ctx = _ctx(approx_tokens(prompt + (system or "")), max_tokens)
-    p["ctx"] = ctx
+    p = {**p, "ctx": ctx}
     prompt, system = wrap(p["model"], prompt, system)
     with tempfile.TemporaryDirectory(prefix="mt_llm_") as td:
         pf = Path(td) / "prompt.txt"
@@ -188,6 +190,7 @@ def generate(prompt: str, schema: dict | None = None, system: str | None = None,
             Path(sf).write_text(system, "utf-8")
         cmd = build_command(p, str(pf), sf, schema, max_tokens, temperature, ctx)
         out_f, err_f = Path(td) / "out.txt", Path(td) / "err.txt"
+        t0 = time.time()
         with open(out_f, "wb") as fo, open(err_f, "wb") as fe:
             proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=fo, stderr=fe,
                                     cwd=str(binary_path().parent), **_run_kwargs())
@@ -196,6 +199,10 @@ def generate(prompt: str, schema: dict | None = None, system: str | None = None,
                     proc.kill()
                     proc.wait()
                     raise Cancelled()
+                if time.time() - t0 > timeout:
+                    proc.kill()
+                    proc.wait()
+                    raise LlmError(f"the model did not answer within {int(timeout // 60)} minutes")
                 try:
                     proc.wait(timeout=0.2)
                     break
@@ -205,9 +212,32 @@ def generate(prompt: str, schema: dict | None = None, system: str | None = None,
         err = err_f.read_bytes().decode("utf-8", errors="replace")
     if proc.returncode != 0:
         raise LlmError(f"llama-completion failed (exit {proc.returncode}): {err[-800:]}")
-    if schema is None:
-        return _END_RE.sub("", _THINK_RE.sub("", out)).strip()
-    try:
-        return extract_json(out)
-    except LlmError as e:
-        raise LlmError(f"{e}\n{err[-800:]}") from e
+    if not out.strip():
+        raise LlmError("the model returned nothing: " + err[-400:])
+    return out
+
+
+def generate(prompt: str, schema: dict | None = None, system: str | None = None,
+             max_tokens: int = 2048, temperature: float = 0.2,
+             cancel: threading.Event | None = None, timeout: float | None = None) -> dict | str:
+    """Runs the model. A failed or unparsable answer is retried (a different seed/temperature gives a
+    different answer), and a run that failed on the graphics card is retried once on the processor."""
+    if not binary_path().is_file():
+        raise LlmError(f"llama.cpp binary not found: {binary_path()}")
+    timeout = timeout or CALL_TIMEOUT
+    p = plan()
+    last: Exception | None = None
+    for attempt in range(3):
+        temp = temperature if attempt == 0 else min(0.6, temperature + 0.2 * attempt)
+        try:
+            out = _run_once(p, prompt, schema, system, max_tokens, temp, cancel, timeout)
+            if schema is None:
+                return _END_RE.sub("", _THINK_RE.sub("", out)).strip()
+            return extract_json(out)
+        except Cancelled:
+            raise
+        except LlmError as e:
+            last = e
+            if p["device"] == "vulkan" and attempt >= 1 and "invalid JSON" not in str(e):
+                p = {**p, "device": "cpu", "gpu_index": None, "ngl": "0"}  # the card failed twice: use the processor
+    raise last  # type: ignore[misc]

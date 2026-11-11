@@ -231,3 +231,34 @@ def test_plan_offloads_part_of_a_big_model():
     assert cmd[cmd.index("-ngl") + 1] == "auto" and cmd[cmd.index("-dev") + 1] == "Vulkan1"
     p["ngl"] = "999"
     assert llm.build_command(p, "p", None, None, 10, 0.0, 4096)[cmd.index("-ngl") + 1] == "999"
+
+
+def test_generate_retries_bad_json_and_falls_back_to_cpu(monkeypatch, tmp_path):
+    calls = []
+    plan = {"model": "qwen3.5-4b", "path": "m.gguf", "device": "vulkan", "gpu_index": 1, "ctx": 4096, "ngl": "auto"}
+    monkeypatch.setattr(llm, "plan", lambda *a, **k: dict(plan))
+    monkeypatch.setattr(llm, "binary_path", lambda: tmp_path / "llama-completion.exe")
+    (tmp_path / "llama-completion.exe").write_bytes(b"")
+
+    def fake(p, prompt, schema, system, max_tokens, temperature, cancel, timeout):
+        calls.append((p["device"], round(temperature, 2)))
+        if len(calls) == 1:
+            return '{"a": 1'  # cut off
+        if len(calls) == 2:
+            raise llm.LlmError("llama-completion failed (exit 3): vulkan device lost")
+        return '{"ok": true}'
+
+    monkeypatch.setattr(llm, "_run_once", fake)
+    assert llm.generate("x", schema={"type": "object"}, temperature=0.2) == {"ok": True}
+    assert [c[0] for c in calls] == ["vulkan", "vulkan", "cpu"] and calls[1][1] > calls[0][1]
+
+
+def test_generate_gives_up_after_three_tries(monkeypatch, tmp_path):
+    monkeypatch.setattr(llm, "plan", lambda *a, **k: {"model": "qwen3.5-4b", "path": "m", "device": "cpu", "gpu_index": None, "ctx": 4096})
+    monkeypatch.setattr(llm, "binary_path", lambda: tmp_path / "x.exe")
+    (tmp_path / "x.exe").write_bytes(b"")
+    n = []
+    monkeypatch.setattr(llm, "_run_once", lambda *a, **k: (n.append(1), "nonsense")[1])
+    with pytest.raises(llm.LlmError):
+        llm.generate("x", schema={"type": "object"})
+    assert len(n) == 3

@@ -29,6 +29,12 @@ def make_job(segments, speakers=None, language="tr"):
     return job_id
 
 
+@pytest.fixture(autouse=True)
+def not_short(monkeypatch):  # the hand-made meetings are tiny; "short recording" has its own tests
+    monkeypatch.setattr(analysis, "SHORT_SECONDS", 0)
+    monkeypatch.setattr(analysis, "SHORT_LINES", 0)
+
+
 def hand_made():
     return [seg(1, 0, 0, 10, "Merhaba, başlayalım mı?"), seg(2, 0, 10, 40, "Bugün plan var."),
             seg(3, 1, 40, 50, "Tamam."), seg(4, 0, 50, 60, "Kim yapacak? Ne zaman?"),
@@ -164,7 +170,7 @@ def test_postprocess():
     merge = {
         "summary": " s ",
         "people": [{"name": "VELİ", "contribution": "c", "gained": "g", "evidence": [3, 999, 5]}],
-        "score": {"decisions": 150, "focus": -5, "repetition": 60, "comment": "k", "tips": ["a", "b"]},
+        "score": {"comment": "k", "tips": ["a", "b"]},
     }
     a = analysis.run(jid, generate=Fake(merge=merge, notes=notes))
     r = analysis.status(jid)["analysis"]
@@ -178,9 +184,10 @@ def test_postprocess():
     assert r["people"][0] == {"id": 0, "contribution": "", "gained": "", "evidence": []}
     assert r["people"][1]["evidence"] == [3, 5]
     sc = r["score"]
-    assert (sc["decisions"], sc["focus"], sc["repetition"]) == (100, 0, 60)
+    assert sc["decisions"] == 100  # one decision kept in a 70 s meeting
+    assert sc["tasks"] is not None and 0 <= sc["tasks"] <= 100
     assert sc["balance"] == round(r["stats"]["balance"] * 100)
-    assert sc["overall"] == round((100 + 0 + 60 + sc["balance"]) / 4)
+    assert "focus" not in sc and sc["overall"] is not None
 
 
 def test_cancel_between_parts(monkeypatch):
@@ -207,7 +214,7 @@ def test_generate_error_gives_error_state():
         raise RuntimeError("model crashed")
 
     a = analysis.run(jid, generate=boom)
-    assert a["state"] == "error" and "model crashed" in a["error"]
+    assert a["state"] == "error" and a["error"]
     assert analysis.status(jid)["state"] == "error"
 
 
@@ -317,9 +324,89 @@ def test_echoed_instructions_are_dropped_and_people_filled_from_notes():
     notes = [{"people": [{"name": "Veli", "did": "İşi üstlendi.", "got": "Planı öğrendi."}]}]
     raw = {"summary": "ozet", "decisions": [{"text": "Emin değilsen listeyi boş bırak.", "line": 2}, {"text": "Plan yapıldı", "line": 2}],
            "people": [{"name": "Ali", "contribution": "toplantıya ne kattığı, 1-2 cümleyle", "gained": "Bir şey", "evidence": []}],
-           "score": {"decisions": 50, "focus": 50, "repetition": 50, "comment": "1-2 cümle", "tips": ["en çok 3 kısa öneri", "Kısa tutun"]}}
+           "score": {"comment": "toplantının nasıl geçtiğine dair 1-2 cümle", "tips": ["bir dahaki toplantı için en çok 3 kısa", "Kısa tutun"]}}
     r = analysis.postprocess(raw, segs, st, names, notes, "tr")
     assert [d["text"] for d in r["decisions"]] == ["Plan yapıldı"]
     assert r["people"][0]["contribution"] == "" and r["people"][0]["gained"] == "Bir şey"
     assert r["people"][1]["contribution"] == "İşi üstlendi." and r["people"][1]["gained"] == "Planı öğrendi."
     assert r["score"]["comment"] == "" and r["score"]["tips"] == ["Kısa tutun"]
+
+
+# ---------- quality guards ----------
+def test_snap_moves_a_citation_to_the_line_that_says_it():
+    segs = hand_made()
+    pos = {s["id"]: i for i, s in enumerate(segs)}
+    assert analysis._snap(1, "Kim yapacak? Ne zaman?", segs, pos) == 4  # off by three lines
+    assert analysis._snap(2, "bambaşka şeylerden bahsediyoruz", segs, pos) == 2  # nothing matches: keep
+    assert analysis._snap(99, "x", segs, pos) is None
+
+
+def test_invented_numbers_are_dropped():
+    known = analysis._numbers("Sürüm 2.4 için 2.5'e bırakalım, 2026 planı")
+    assert known == {"2.4", "2.5", "2026"}
+    assert analysis._drop_ungrounded("Plan 2.4 olacak. Zamanlanmış bildirimler 2.3'e gitti. Bitti.", known) == "Plan 2.4 olacak. Bitti."
+    assert analysis._drop_ungrounded("Üç kişi 10 dakika konuştu.", known) == "Üç kişi 10 dakika konuştu."
+
+
+def test_computed_score_does_not_depend_on_the_model():
+    segs = hand_made()
+    st = analysis.stats(segs, {"0": "Ali", "1": "Veli"})
+    sc = analysis.compute_score(st, segs, [{"text": "a", "line": 1}], [{"owner": 1, "task": "x", "due": "Cuma", "line": 5},
+                                                                        {"owner": None, "task": "y", "due": "", "line": 5}], [], 0)
+    assert sc["tasks"] == 50 and sc["questions"] is None and sc["decisions"] == 100
+    parts = [v for k, v in sc.items() if k != "overall" and v is not None]
+    assert sc["overall"] == round(sum(parts) / len(parts))
+    assert analysis.compute_score(st, segs, [], [], [{"x": 1}], 2)["questions"] == 50
+    assert analysis.compute_score(st, segs, [], [], [], 0)["decisions"] == 0
+
+
+def test_repetition_score():
+    same = [seg(i, 0, i, i + 1, "bildirimler dar kapsamlı olacak sadece kampanya") for i in range(1, 8)]
+    assert analysis.repetition_score(same) <= 20
+    texts = ["bildirimler dar kapsamlı olacak", "onboarding hatası kritik görünüyor", "sürüm tarihi cuma günü olsun",
+             "dokümantasyon hazırlığı elifte kalsın", "testçi yükü fazla diye endişeliyim", "pazarlama metinleri henüz gelmedi",
+             "analytics altyapısı sonraya kalsın"]
+    varied = [seg(i + 1, 0, i, i + 1, tx) for i, tx in enumerate(texts)]
+    assert analysis.repetition_score(varied) == 100
+    assert analysis.repetition_score(varied[:3]) is None
+
+
+def test_short_recording_gets_no_score_and_no_person_review(monkeypatch):
+    monkeypatch.setattr(analysis, "SHORT_SECONDS", 60)
+    monkeypatch.setattr(analysis, "SHORT_LINES", 6)
+    jid = make_job(hand_made(), {"0": "Ali", "1": "Veli"})
+    fake = Fake(merge={"summary": "ozet", "people": [{"name": "Ali", "contribution": "uzun uzun bir katkı cümlesi var", "gained": "bir şey", "evidence": [1]}],
+                       "score": {"comment": "x", "tips": []}})
+    assert analysis.run(jid, generate=fake)["state"] == "done"
+    r = analysis.status(jid)["analysis"]
+    assert r["short"] is True and r["score"]["overall"] is None and r["people"][0]["contribution"] == ""
+
+
+def test_failed_parts_and_failed_summary_do_not_fail_the_analysis(monkeypatch):
+    jid = make_job(hand_made(), {"0": "Ali", "1": "Veli"})
+
+    def gen(prompt, schema=None, **kw):
+        if "summary" in (schema or {}).get("properties", {}):
+            raise RuntimeError("model crashed")
+        return {"topics": [{"title": "Plan", "summary": "Plan konuşuldu.", "line": 2}], "decisions": [{"text": "Plan yapıldı", "line": 2}]}
+
+    assert analysis.run(jid, generate=gen)["state"] == "done"
+    r = analysis.status(jid)["analysis"]
+    assert r["summary"] == "Plan konuşuldu." and r["warnings"] and r["decisions"]
+
+    def dead(prompt, schema=None, **kw):
+        raise RuntimeError("model crashed")
+
+    jid2 = make_job(hand_made(), {"0": "Ali", "1": "Veli"})
+    assert analysis.run(jid2, generate=dead)["state"] == "error"
+
+
+def test_merge_decisions_skips_near_duplicates_and_task_like_ones_are_dropped():
+    a = [{"text": "Sürüm tarihi iki hafta sonra Cuma olacak.", "line": 27}]
+    b = [{"text": "Sürüm tarihi iki hafta sonra Cuma olarak belirlendi.", "line": 27},
+         {"text": "Offline mod 2.5 sürümüne ertelenecek.", "line": 10}]
+    out = analysis.merge_decisions(a, b)
+    assert [d["line"] for d in out] == [27, 10]
+    decisions = [{"text": "Test planı Deniz'e verildi.", "line": 45}, {"text": "Offline mod ertelenecek.", "line": 10}]
+    tasks = [{"task": "Test planını hazırlamak", "owner": 0, "due": "", "line": 45}]
+    assert [d["line"] for d in analysis.drop_task_like(decisions, tasks)] == [10]

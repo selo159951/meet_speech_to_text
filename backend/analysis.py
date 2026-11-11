@@ -18,7 +18,9 @@ from . import store
 
 CHUNK_TOKENS = 3000
 MERGE_TOKENS = 6000
-VERSION = 1
+VERSION = 2
+SHORT_SECONDS = 60  # a recording this short (or with fewer lines) gets no score and no person review
+SHORT_LINES = 6
 
 # ---------------- schemas ----------------
 _S, _I, _N = {"type": "string"}, {"type": "integer"}, {"type": "number"}
@@ -47,7 +49,7 @@ NOTES_SCHEMA = _obj(
 MERGE_SCHEMA = _obj(
     summary={"type": "string", "minLength": 40},
     people=_cap(_obj(name=_S, contribution=_T, gained=_T, evidence=_cap(_I, 6)), 12, 1),
-    score=_obj(decisions=_I, focus=_I, repetition=_I, comment=_S, tips=_cap(_S, 3)),
+    score=_obj(comment=_S, tips=_cap(_S, 3)),
 )
 
 
@@ -56,6 +58,28 @@ def merge_schema(n: int) -> dict:
     people = {**MERGE_SCHEMA["properties"]["people"], "minItems": max(1, n), "maxItems": max(1, n)}
     return {**MERGE_SCHEMA, "properties": {**MERGE_SCHEMA["properties"], "people": people}}
 
+
+DECISIONS_SCHEMA = _obj(decisions=_cap(_obj(text=_S, line=_I), 10))
+DECISIONS_PROMPT = {
+    "tr": """Aşağıda bir toplantı dökümünün bir bölümü var. Yalnızca KARARLARI çıkar.
+- Karar: bir konuda netleşen, kesinleşen sonuçtur. Örnekler: "bildirimler dar kapsamlı olsun", "offline mod 2.5'e kaldı", "tarih iki hafta sonra Cuma", "tasarım değişikliği yok".
+- Ertelenen ya da vazgeçilen şeyler de karardır.
+- Birine iş vermek karar değil görevdir: onları yazma. Fikir, soru ve endişe de karar değildir.
+- text: kararın kısa ve tam bir cümlesi. line: kararın verildiği satırın numarası.
+Emin değilsen yazma.
+
+Döküm:
+{transcript}""",
+    "en": """Below is one part of a meeting transcript. Extract only the DECISIONS.
+- A decision is something that was settled. Examples: "keep notifications narrow", "offline mode moves to 2.5", "release date is Friday in two weeks", "no redesign".
+- Things that were postponed or dropped are decisions too.
+- Giving someone work is a task, not a decision: leave those out. Ideas, questions and worries are not decisions either.
+- text: one short, complete sentence. line: the number of the line where it was decided.
+Leave it out when unsure.
+
+Transcript:
+{transcript}""",
+}
 
 QUESTIONS_SCHEMA = _obj(results=_cap(_obj(line=_I, answered={"type": "boolean"}), 12))
 QUESTIONS_PROMPT = {
@@ -89,7 +113,7 @@ NOTES_PROMPT = {
 
 Şunları çıkar:
 - topics: bu bölümde konuşulan konular (title kısa, summary 1 cümle, line: konunun başladığı satır no)
-- decisions: net verilen kararlar (text, line)
+- decisions: net verilen kararlar. "olsun", "yapalım", "alıyoruz", "bırakalım", "ertelendi", "kesinleşti", "o zaman şöyle" gibi bir kapanışla bağlanan her karar; ertelenenler de karardır (text kısa ve tam, line)
 - tasks: üstlenilen işler (owner: işi alan kişinin adı tam olarak dökümdeki gibi, bilinmiyorsa ""; task; due: söylenen tarih/süre, yoksa ""; line)
 - questions: yalnızca önemli, gerçek sorular (laf arası "değil mi?", "tamam mı?" gibi olanları yazma). asker: soran kişinin adı; text: sorunun kendisi, kısa; answered: sonraki satırlarda biri net bir cevap verdiyse true, soru geçiştirildiyse ya da "sonra bakarız" dendiyse false; line
 - people: bu bölümde konuşan herkes için did (ne katkı yaptı) ve got (bu bölümden ne aldı: aldığı cevaplar, netleşen şeyler ya da hiçbir şey; yoksa "")
@@ -102,7 +126,7 @@ Döküm:
 
 Extract:
 - topics: what was discussed in this part (title short, summary 1 sentence, line: the line where the topic starts)
-- decisions: decisions that were clearly made (text, line)
+- decisions: every decision that was clearly made, including things postponed or dropped ("let's do", "we'll take", "push to", "agreed"); text short and complete, line
 - tasks: work someone took on (owner: the person's name exactly as written in the transcript, "" if unknown; task; due: the date/time said, "" if none; line)
 - questions: only real, important questions (skip fillers like "right?" or "ok?"). asker: name of who asked; text: the question itself, short; answered: true if someone gave a clear answer in the following lines, false if it was brushed aside or postponed; line
 - people: for everyone who speaks in this part, did (what they contributed) and got (what they took away from this part: answers they got, things clarified, or nothing; "" if none)
@@ -117,7 +141,7 @@ MERGE_PROMPT = {
 
 - summary: 3-6 cümlelik özet
 - people: her konuşmacı için tam olarak bir kayıt. contribution: toplantıya ne kattığı, 1-2 cümleyle (puan ya da tek kelime değil). gained: bu kişinin kendisi için toplantıdan ne aldığı (sorduğu sorulara aldığı cevaplar, onun için netleşen şeyler, üstüne aldığı işler; sorusu cevapsız kaldıysa bunu yaz). Her kişi için farklı ve o kişiye özel yaz, aynı cümleyi tekrarlama. evidence: bunu gösteren satır numaraları
-- score: decisions (kararlar ne kadar net, 0-100), focus (konuda kalma, 0-100), repetition (tekrarın azlığı, 100 = hiç tekrar yok), comment (1-2 cümle), tips (en çok 3 kısa öneri)
+- score: comment (toplantının nasıl geçtiğine dair 1-2 cümle; sayı verme), tips (bir dahaki toplantı için en çok 3 kısa, somut öneri)
 
 Yalnızca notlara dayan. Adları notlardaki gibi yaz.
 
@@ -132,7 +156,7 @@ Notlar:
 
 - summary: 3-6 sentences
 - people: exactly one entry per speaker. contribution: what they added to the meeting, in 1-2 sentences (not a rating or a single word). gained: what this person personally took away (answers to their own questions, what became clear for them, work they took on; say so if their question stayed unanswered). Write it specifically for each person, never the same sentence twice. evidence: line numbers that show it
-- score: decisions (how clear the decisions are, 0-100), focus (staying on topic, 0-100), repetition (how little repetition, 100 = none), comment (1-2 sentences), tips (at most 3 short tips)
+- score: comment (1-2 sentences on how the meeting went; give no numbers), tips (at most 3 short, concrete tips for the next meeting)
 
 Rely only on the notes. Write names as in the notes.
 
@@ -293,6 +317,83 @@ def _dedupe(items: list[dict], key: str) -> list[dict]:
     return out
 
 
+def _words(text: str) -> set[str]:
+    """Words of four letters or more, cut to five letters: Turkish endings (planı, planını, plana) then match."""
+    return {w[:5] for w in re.findall(r"\w+", _norm(text)) if len(w) > 3}
+
+
+def _snap(ln, text: str, segments: list[dict], pos: dict[int, int]):
+    """Small models cite a line a few places off. Of the lines around the cited one, take the one that
+    shares the most words with the item (the cited line wins a tie). Returns a segment id or None."""
+    try:
+        ln = int(ln)
+    except (TypeError, ValueError):
+        return None
+    if ln not in pos:
+        return None
+    w = _words(text)
+    if not w:
+        return ln
+    i, best, best_n = pos[ln], ln, len(w & _words(_text(segments[pos[ln]])))
+    for j in range(max(0, i - 4), min(len(segments), i + 5)):
+        n = len(w & _words(_text(segments[j])))
+        if n > best_n:
+            best, best_n = segments[j]["id"], n
+    return best
+
+
+_NUM = re.compile(r"\d+(?:[.,]\d+)+|\d{3,}")
+
+
+def _numbers(text: str) -> set[str]:
+    return {m.replace(",", ".") for m in _NUM.findall(text)}
+
+
+def _grounded(text: str, known: set[str]) -> bool:
+    """False when the text names a version / amount / year that is nowhere in the recording."""
+    return _numbers(text) <= known
+
+
+def _drop_ungrounded(text: str, known: set[str]) -> str:
+    """Sentences that carry an invented number are removed (a small model once wrote "2.3" for "2.4")."""
+    if _grounded(text, known):
+        return text
+    parts = re.split(r"(?<=[.!?])\s+", text)
+    return " ".join(x for x in parts if _grounded(x, known)).strip()
+
+
+def repetition_score(segments: list[dict]):
+    """100 = nothing is said twice. A line counts as a repeat when it shares most of its words with one of
+    the previous 30 lines. None when the recording is too short to tell."""
+    toks = [_words(_text(s)) for s in segments]
+    seen = dup = 0
+    for i, t in enumerate(toks):
+        if len(t) < 4:
+            continue
+        seen += 1
+        for u in toks[max(0, i - 30):i]:
+            if len(u) >= 4 and len(t & u) / min(len(t), len(u)) >= 0.7:
+                dup += 1
+                break
+    return round(100 * (1 - dup / seen)) if seen >= 5 else None
+
+
+def compute_score(st: dict, segments: list[dict], decisions: list, tasks: list, open_qs: list, n_questions: int) -> dict:
+    """The numbers come from the transcript, not from the model: a small model rates every meeting 85-98.
+    Each part is 0-100 or None when there is nothing to judge."""
+    minutes = max(st["duration"] / 60, 1 / 6)
+    target = min(8, max(1, minutes / 5))  # about one decision per five minutes, at most eight expected
+    parts = {"decisions": min(100, round(100 * len(decisions) / target))}
+    parts["tasks"] = (round(100 * sum(0.6 * (t["owner"] is not None) + 0.4 * bool(t["due"]) for t in tasks) / len(tasks))
+                      if tasks else None)
+    parts["questions"] = round(100 * (1 - min(len(open_qs), n_questions) / n_questions)) if n_questions else None
+    parts["repetition"] = repetition_score(segments)
+    parts["balance"] = round(st["balance"] * 100) if len(st["speakers"]) > 1 else None
+    have = [v for v in parts.values() if v is not None]
+    parts["overall"] = round(sum(have) / len(have)) if have else None
+    return parts
+
+
 def _echo(text: str, templates: str) -> bool:
     """A small model sometimes copies the instruction instead of answering it."""
     n = _norm(text)
@@ -316,9 +417,11 @@ def postprocess(raw: dict, segments: list[dict], st: dict, names: dict[str, int]
     """Repair what small models get wrong: bad line ids, names, scores, missing people, echoed instructions."""
     templates = _norm(" ".join((NOTES_PROMPT[lang], MERGE_PROMPT[lang], QUESTIONS_PROMPT[lang], SYSTEM[lang])))
 
+    known: set[str] = set()
+
     def clean(v) -> str:
         v = str(v or "").strip()
-        return "" if _echo(v, templates) else v
+        return "" if _echo(v, templates) else _drop_ungrounded(v, known)
 
     for key, field in (("decisions", "text"), ("tasks", "task"), ("open_questions", "text"), ("topics", "title")):
         raw = {**raw, key: [r for r in (raw.get(key) or []) if isinstance(r, dict) and clean(r.get(field))]}
@@ -326,21 +429,23 @@ def postprocess(raw: dict, segments: list[dict], st: dict, names: dict[str, int]
     ids = set(by_id)
     valid = {d["id"] for d in st["speakers"]}
 
-    def line(x):
-        try:
-            x = int(x)
-        except (TypeError, ValueError):
-            return None
-        return x if x in ids else None
+    pos = {sg["id"]: i for i, sg in enumerate(segments)}
+    known |= _numbers(" ".join(_text(sg) for sg in segments)) | {f"{st['duration'] / 60:.1f}"}
+
+    def line(x, text=""):
+        return _snap(x, text, segments, pos)
+
+    def keep(text: str) -> bool:
+        return bool(text) and _grounded(text, known)
 
     def rows(key):
         return [r for r in (raw.get(key) or []) if isinstance(r, dict)]
 
     topics = []
     for t in rows("topics"):
-        ln = line(t.get("line"))
+        ln = line(t.get("line"), str(t.get("title", "")) + " " + str(t.get("summary", "")))
         if ln is not None and str(t.get("title", "")).strip():
-            topics.append({"title": str(t["title"]).strip(), "summary": str(t.get("summary", "")).strip(),
+            topics.append({"title": str(t["title"]).strip(), "summary": _drop_ungrounded(str(t.get("summary", "")).strip(), known),
                            "start": by_id[ln]["start"], "end": 0.0, "line": ln})
     topics = sorted(_dedupe(topics, "title"), key=lambda t: t["start"])
     if topics:  # the first topic covers the meeting from its start
@@ -348,16 +453,17 @@ def postprocess(raw: dict, segments: list[dict], st: dict, names: dict[str, int]
     for i, t in enumerate(topics):
         t["end"] = topics[i + 1]["start"] if i + 1 < len(topics) else st["duration"]
 
-    decisions = _dedupe([{"text": str(d.get("text", "")).strip(), "line": line(d.get("line"))}
+    decisions = _dedupe([{"text": str(d.get("text", "")).strip(), "line": line(d.get("line"), str(d.get("text", "")))}
                          for d in rows("decisions")], "text")
-    decisions = [d for d in decisions if d["line"] is not None]
+    decisions = [d for d in decisions if d["line"] is not None and keep(d["text"])]
     tasks = _dedupe([{"owner": _to_id(t.get("owner"), names, valid), "task": str(t.get("task", "")).strip(),
-                      "due": str(t.get("due", "") or "").strip(), "line": line(t.get("line"))}
+                      "due": str(t.get("due", "") or "").strip(),
+                      "line": line(t.get("line"), str(t.get("task", "")))}
                      for t in rows("tasks")], "task")
-    tasks = [t for t in tasks if t["line"] is not None]
+    tasks = [t for t in tasks if t["line"] is not None and keep(t["task"])]
     oq = _dedupe([{"asker": _to_id(q.get("asker"), names, valid), "text": str(q.get("text", "")).strip(),
-                   "line": line(q.get("line"))} for q in rows("open_questions")], "text")
-    oq = [q for q in oq if q["line"] is not None]
+                   "line": line(q.get("line"), str(q.get("text", "")))} for q in rows("open_questions")], "text")
+    oq = [q for q in oq if q["line"] is not None and keep(q["text"])]
 
     found = {}
     for p in rows("people"):
@@ -374,9 +480,7 @@ def postprocess(raw: dict, segments: list[dict], st: dict, names: dict[str, int]
                        "evidence": _ints(p.get("evidence"), ids)})
 
     sc = raw.get("score") if isinstance(raw.get("score"), dict) else {}
-    score = {"decisions": _clamp(sc.get("decisions")), "focus": _clamp(sc.get("focus")),
-             "repetition": _clamp(sc.get("repetition")), "balance": round(st["balance"] * 100)}
-    score["overall"] = round(sum(score[k] for k in ("decisions", "focus", "repetition", "balance")) / 4)
+    score = compute_score(st, segments, decisions, tasks, oq, int(raw.get("n_questions") or 0))
     score["comment"] = clean(sc.get("comment"))
     score["tips"] = [clean(t) for t in (sc.get("tips") or []) if clean(t)][:5]
     return {"summary": clean(raw.get("summary")), "topics": topics, "decisions": decisions,
@@ -395,12 +499,13 @@ def _compact(obj) -> str:
 
 def collect(notes: list[dict]) -> dict:
     """Lists are taken from the part notes as they are: a small model drops rows when asked to copy them."""
-    out = {"topics": [], "decisions": [], "tasks": [], "open_questions": []}
+    out = {"topics": [], "decisions": [], "tasks": [], "open_questions": [], "n_questions": 0}
     for n in notes:
         if not isinstance(n, dict):
             continue
         for k in ("topics", "decisions", "tasks"):
             out[k] += [r for r in (n.get(k) or []) if isinstance(r, dict)]
+        out["n_questions"] += len([q for q in (n.get("questions") or []) if isinstance(q, dict)])
         out["open_questions"] += [q for q in (n.get("questions") or [])
                                   if isinstance(q, dict) and q.get("answered") is False]
     return out
@@ -423,6 +528,32 @@ def verify_questions(open_qs: list[dict], segments: list[dict], speakers: dict, 
             if isinstance(r, dict) and isinstance(r.get("answered"), bool):
                 verdict[r.get("line")] = r["answered"]
     return [q for q in open_qs if not verdict.get(q.get("line"), False)]
+
+
+def merge_decisions(a: list[dict], b: list[dict]) -> list[dict]:
+    """Union of two decision lists; a decision that says nearly the same as one already there is skipped."""
+    out = [d for d in a if isinstance(d, dict)]
+    for d in b:
+        if not isinstance(d, dict):
+            continue
+        w = _words(str(d.get("text", "")))
+        if not w or any(len(w & _words(str(o.get("text", "")))) / min(len(w), len(_words(str(o.get("text", ""))) or w)) >= 0.6
+                        for o in out):
+            continue
+        out.append(d)
+    return out
+
+
+def drop_task_like(decisions: list[dict], tasks: list[dict]) -> list[dict]:
+    """A decision that only restates a task ("Test planı Deniz'e verildi") is a task, not a decision."""
+    tw = [_words(str(t.get("task", ""))) for t in tasks]
+    out = []
+    for d in decisions:
+        w = _words(d["text"])
+        if w and any(t and len(w & t) / len(w) >= 0.5 for t in tw):
+            continue
+        out.append(d)
+    return out
 
 
 def digest(notes: list[dict], open_qs: list[dict] | None = None) -> str:
@@ -493,11 +624,16 @@ def _run(job_id: str, cancel, generate, t0: float) -> None:
 
     _set(job_id, state="running", stage="stats", progress=0.0, part=0, parts=0, error="")
     suggestions = []
+    duration = max((sg["end"] for sg in segments), default=0.0) - min((sg["start"] for sg in segments), default=0.0)
+    short = duration < SHORT_SECONDS or len(segments) < SHORT_LINES
+    warnings: list[str] = []
     _set(job_id, stage="names")
     try:
         from . import names, names_llm
 
         check()
+        if short or not any(names._is_default(speakers.get(str(k)), int(k)) for k in {sg["speaker"] for sg in segments}):
+            raise ImportError  # nothing to look for (or too little speech to trust a guess)
         gen = lambda *a, **k: generate(*a, **{**k, "cancel": cancel})  # noqa: E731
         llm_found = names_llm.suggest(segments, speakers, gen, lang=LANG)
         rule = names.detect_names(segments, speakers)
@@ -517,10 +653,12 @@ def _run(job_id: str, cancel, generate, t0: float) -> None:
 
     st = stats(segments, speakers)
     chunks = chunk_lines(render(segments, speakers))
-    total = len(chunks) + 2  # notes parts + question check + final call
+    total = len(chunks) + 2  # notes parts (+ decision pass) + question check + final call
     _set(job_id, stage="notes", parts=len(chunks), progress=0.0)
 
     notes = []
+    extra_decisions: list[list] = []
+    last_error = ""
     for i, ch in enumerate(chunks):
         check()
         text = "\n".join(ch)
@@ -532,16 +670,39 @@ def _run(job_id: str, cancel, generate, t0: float) -> None:
                 saved = json.loads(f.read_text("utf-8"))
             except ValueError:
                 pass
-        if saved and saved.get("hash") == h:
+        if saved and saved.get("hash") == h and "decisions" in saved:
             notes.append(saved["notes"])
+            extra_decisions.append(saved["decisions"])
         else:
-            n = call(NOTES_PROMPT[LANG].format(transcript=text), NOTES_SCHEMA, max_tokens=3000)
-            f.write_text(json.dumps({"hash": h, "notes": n}, ensure_ascii=False), "utf-8")
+            try:
+                n = call(NOTES_PROMPT[LANG].format(transcript=text), NOTES_SCHEMA, max_tokens=3000)
+            except Exception as e:
+                if _is_cancel(e):
+                    raise
+                traceback.print_exc()
+                warnings.append(f"part {i + 1}/{len(chunks)} could not be analysed")
+                last_error = str(e).strip()[:300]
+                n = {}
+            else:
+                dd: list = []
+                try:  # a second, single-purpose look: small models miss decisions when asked for everything at once
+                    got = call(DECISIONS_PROMPT[LANG].format(transcript=text), DECISIONS_SCHEMA, max_tokens=900)
+                    dd = got.get("decisions") or [] if isinstance(got, dict) else []
+                except Exception as e:
+                    if _is_cancel(e):
+                        raise
+                    traceback.print_exc()
+                f.write_text(json.dumps({"hash": h, "notes": n, "decisions": dd}, ensure_ascii=False), "utf-8")
+                extra_decisions.append(dd)
             notes.append(n)
         _set(job_id, part=i + 1, progress=round((i + 1) / total, 3))
 
+    if not any(notes):
+        raise RuntimeError("the model could not analyse the recording: " + last_error)
     _set(job_id, stage="merge")
     found = collect(notes)
+    for dd in extra_decisions:
+        found["decisions"] = merge_decisions(found["decisions"], dd)
     try:
         found["open_questions"] = verify_questions(found["open_questions"], segments, speakers, LANG, call)
     except Exception as e:
@@ -553,10 +714,28 @@ def _run(job_id: str, cancel, generate, t0: float) -> None:
     merge_stats = {"duration": st["duration"], "balance": st["balance"],
                    "speakers": [{k: sp[k] for k in ("name", "share", "turns", "words", "questions")}
                                 for sp in st["speakers"]]}
-    raw = call(MERGE_PROMPT[LANG].format(names=shown, stats=_compact(merge_stats), notes=digest(notes, found["open_questions"])),
-               merge_schema(len(st["speakers"])))
+    try:
+        raw = call(MERGE_PROMPT[LANG].format(names=shown, stats=_compact(merge_stats), notes=digest(notes, found["open_questions"])),
+                   merge_schema(len(st["speakers"])))
+    except Exception as e:
+        if _is_cancel(e):
+            raise
+        traceback.print_exc()
+        warnings.append("the summary could not be written")
+        raw = {}
     names_map = _name_map(speakers, job.get("speakers") or {})
-    result = postprocess({**(raw if isinstance(raw, dict) else {}), **found}, segments, st, names_map, notes, LANG)
+    raw = raw if isinstance(raw, dict) else {}
+    if not str(raw.get("summary") or "").strip():  # fallback: the topic summaries, in order
+        raw["summary"] = " ".join(str(t.get("summary", "")).strip() for t in found["topics"][:6] if isinstance(t, dict))[:700]
+    result = postprocess({**raw, **found}, segments, st, names_map, notes, LANG)
+    result["decisions"] = drop_task_like(result["decisions"], result["tasks"])
+    result["score"] = {**result["score"], **{k: v for k, v in compute_score(
+        st, segments, result["decisions"], result["tasks"], result["open_questions"], found["n_questions"]).items()}}
+    if short:  # too little to judge: no score, no review of the people, only what was said
+        result["score"] = {k: None for k in ("overall", "decisions", "tasks", "questions", "repetition", "balance")} | {"comment": "", "tips": []}
+        for pp in result["people"]:
+            pp["contribution"] = pp["gained"] = ""
+            pp["evidence"] = []
 
     model = device = ""
     try:
@@ -568,7 +747,7 @@ def _run(job_id: str, cancel, generate, t0: float) -> None:
         pass
     result = {"version": VERSION, "model": model, "device": device, "lang": LANG, "created": time.time(),
               "seconds": round(time.time() - t0, 1), "transcript_hash": transcript_hash(segments),
-              "stats": st, **result, "name_suggestions": suggestions}
+              "stats": st, **result, "short": short, "warnings": warnings, "name_suggestions": suggestions}
     (store.job_path(job_id) / "analysis.json").write_text(json.dumps(result, ensure_ascii=False, indent=1), "utf-8")
     _set(job_id, state="done", stage="merge", progress=1.0, error="")
 

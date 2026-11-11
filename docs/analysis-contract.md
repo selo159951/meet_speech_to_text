@@ -54,13 +54,13 @@ Stages: `stats` -> `notes` (one LLM call per ~3000-token chunk of lines, saved t
   "tasks": [{"owner": 1, "task": "", "due": "" , "line": 40}],
   "open_questions": [{"asker": 2, "text": "", "line": 55}],
   "people": [{"id": 0, "contribution": "", "gained": "", "evidence": [12, 40]}],
-  "score": {"overall": 68, "decisions": 70, "focus": 60, "repetition": 75, "balance": 55,
+  "score": {"overall": 68, "decisions": 70, "tasks": 60, "questions": 80, "repetition": 75, "balance": 55,
             "comment": "", "tips": ["", ""]},
   "name_suggestions": [{"speaker": 1, "name": "Burak", "confidence": 0.8, "line": 9, "source": "llm|rule|both"}]
 }
 ```
-- `owner` / `asker` are speaker ids or `null`. `due` is free text or `""`. Sub-scores are 0-100.
-  `balance` score comes from `stats.balance` (not from the LLM); the LLM gives the other three and `overall` is their mean with balance.
+- `owner` / `asker` are speaker ids or `null`. `due` is free text or `""`. Sub-scores are 0-100 or null (nothing to judge).
+  Version 2: every number is computed from the transcript by `analysis.compute_score` (decisions per minute, tasks with owner and due, answered questions, repetition, balance); the model only writes `comment` and `tips`. `overall` is the mean of the non-null parts. `short` = true (under 60 s or 6 lines) has no score and no person review; `warnings` lists steps that failed softly.
 - Every `line` / `evidence` id must exist in the transcript: drop or repair invalid ones after generation.
 - Text is written in the language of the recording (`job["language"]`), names taken from `job["speakers"]`.
 
