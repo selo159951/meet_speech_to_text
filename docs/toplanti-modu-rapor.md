@@ -102,3 +102,14 @@ Hugging Face'te faster-whisper formatında Türkçe ince ayarlı modeller var. �
 | large-v3-turbo Türkçe ince ayar (selimc tabanlı) | %6,7 | %4,9 | %16,7 | 12 sn |
 
 Sonuç: şu anki model değiştirilmedi. Örnek küçük ve çoğu yapay ses; gerçek toplantılarla fark değişebilir. Bir "Türkçe uzman" model denemek istenirse en iyi aday large-v3 ince ayarı; gürültüde biraz iyi, ama yavaş.
+
+## Kişileri öğrenme ve kısa araya girmeler (11 Kasım)
+Tasarım EVREN'e (glm-5.3) danışılarak çıkarıldı, kodu EVREN (deepseek) inceledi; önerilerinin bir kısmı kendi ölçümlerimle değiştirildi.
+
+**Ölçüm (20 kişilik gerçek kayıt, 15 adı bilinen kişi, aynı kişinin ses izi iki yarıdan):** aynı kişi 0,81-0,91 benzer (ortalama 0,91); farklı kişiler ortalama 0,28, en fazla 0,66 (%99'u 0,62 altında). En yakın kişiyi bulma 15/15. Eski eşik 0,50 farklı kişi çiftlerinin %8,6'sını yanlışlıkla eşleştirirdi.
+
+- **Eşikler:** otomatik isim 0,65 ve ikinci en yakın kişiden en az 0,08 önde olmalı; 0,50-0,65 arası yalnızca "Selim olabilir?" önerisi. (EVREN 0,70/0,60 önermişti; farklı oturum/mikrofonda aynı kişinin benzerliği düşeceği için biraz gevşek bıraktım, ikinci en yakın kişi kuralı güvenliği sağlıyor.)
+- **Kısa cümleler:** her cümle için ses izi çıkarılıp tüm toplantı birden çözülüyor (Viterbi): cümle en çok benzediği sese gider, konuşmacı değiştirmenin bir bedeli vardır, "Thank you." gibi kapanış sözlerinden sonra bu bedel yarıya iner. Moderatörün kısa sözleri eskiden 8/10 doğru konuşmacıya gidiyordu, şimdi 10/10.
+- **Bölünmüş konuşmacı birleştirme:** iki konuşmacının ses izi ≥0,72 benzer ve birbirinin en yakını ise (ve her biri ikinciden ≥0,05 öndeyse) tek kişidir. Gerçek kayıtta moderatör öğretmen ile "Greta" kümesi böyle birleşti (0,75; diğer tüm çiftler ≤0,66).
+- **Otomatik öğrenme:** kendini tek bir isimle tanıtan, en az 15 sn temiz konuşması olan ve tek sesten oluşan konuşmacı Kişiler'e "otomatik" olarak eklenir. Aynı isimde kişi varsa yalnızca benzeyen ses eklenir (≥0,60); başka isimli birine ≥0,70 benziyorsa öğrenilmez. Otomatik kişi, kullanıcı onaylayana ya da ikinci toplantıda duyulana kadar **yalnızca öneri** yapar. Gerçek kayıtta 1. toplantıda 5 kişi öğrenildi (9 kişi 15 sn'den az konuştuğu için atlandı), aynı kayıt tekrar işlenince 5'i de önerildi (benzerlik ≥0,99) ve ikinci toplantı sayıldı.
+- Sınır: kalabalık toplantıda öğrencilerin çoğu 15-30 sn konuşuyor, ses izleri "zayıf" işaretlenir. Aynı kişiyi farklı mikrofon ve odada tanıma oranı gerçek ikinci bir toplantıyla ölçülmedi (yalnızca aynı kayıt).
