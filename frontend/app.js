@@ -162,6 +162,8 @@ async function openJob(id) {
 }
 
 function applyJob(j) {
+  // edit calls return the job without the one-off "learned" report; keep it for this recording
+  if (j && j.learned === undefined && job && job.id === j.id) j.learned = job.learned;
   job = j; dirty = {}; segSpk = {}; spkNames = { ...j.speakers };
   for (const s of job.segments) spkNames[s.speaker] ??= `Speaker ${s.speaker + 1}`;
   renderSpeakers(); renderSegs(); updateExportOptions();
@@ -264,6 +266,12 @@ function renderSpeakers() {
   const det = el("button", { className: "icon", title: t("detect_names") + " - " + t("detect_title") }, ic("user-search"));
   det.onclick = detectNames;
   box.append(el("div", { className: "spkbtns" }, add, det));
+  const learned = (job.learned || []).filter((x) => x.action === "created" || x.action === "enriched");
+  if (learned.length) {
+    const names = learned.map((x) => x.name);
+    const shown = names.slice(0, 6).join(", ") + (names.length > 6 ? ", ..." : "");
+    box.append(el("p", { className: "hint learnedline", textContent: t(names.length === 1 ? "learned_1" : "learned_n", { n: names.length, s: shown }) }));
+  }
   const f = $("fSpk"), cur = f.value;
   f.replaceChildren(new Option(t("all_speakers"), ""));
   for (const i of spkIds()) f.add(new Option(spkLabel(i), i));
@@ -573,6 +581,7 @@ window.addEventListener("beforeunload", () => save());
 
 /* Meeting mode: transcription also starts the analysis in the background. */
 $("meetingMode").onchange = (e) => call("set_settings", { meeting_mode: e.target.checked }).catch(() => {});
+$("learnPeople").onchange = (e) => call("set_settings", { learn_people: e.target.checked }).catch(() => {});
 $("langMode").onchange = (e) => call("set_settings", { language: e.target.value }).catch(() => {});
 
 window.splash?.step(70, "settings");
@@ -580,6 +589,7 @@ call("get_settings")
   .then((st) => {
     showGpu(st);
     $("meetingMode").checked = !!st.meeting_mode;
+    $("learnPeople").checked = st.learn_people !== false;
     $("langMode").value = st.language || "auto";
     setLang(st.ui_lang || (navigator.language.startsWith("tr") ? "tr" : "en"), false);
   })

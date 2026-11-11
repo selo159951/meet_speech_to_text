@@ -39,6 +39,9 @@
       };
       const bits = [t("voice_secs", { n: Math.round(p.seconds) })];
       const tags = [];
+      if (p.auto && !p.confirmed) tags.push(el("span", {
+        className: "ptag", title: t("auto_tag_title"),
+        textContent: p.meetings >= 2 ? t("auto_seen_n", { n: p.meetings }) : t("auto_tag") }));
       if (p.weak) tags.push(el("span", { className: "ptag warn", textContent: t("weak_voice") }));
       for (const w of p.warnings) tags.push(el("span", { className: "ptag warn", textContent: qLabel(w) }));
       if (!p.weak && !p.warnings.length) tags.push(el("span", { className: "ptag ok" }, ic("check")));
@@ -46,6 +49,10 @@
       addFile.onclick = () => run(() => call("add_person_sample_file", p.id));
       const addMic = el("button", { className: "small", textContent: t("from_mic") });
       addMic.onclick = () => startRec(p.id, null);
+      const confirmBtn = p.auto && !p.confirmed
+        ? el("button", { className: "small", title: t("auto_tag_title") }, icText("check", t("confirm_person")))
+        : null;
+      if (confirmBtn) confirmBtn.onclick = () => confirmOne(p.id);
       const del = el("button", { className: "small", textContent: t("delete_person") });
       del.onclick = async () => {
         if (!confirm(t("confirm_delete_person", { n: p.name }))) return;
@@ -53,10 +60,17 @@
       };
       return el("div", { className: "pcard" },
         el("div", { className: "prow" }, name, el("span", { className: "pmeta", textContent: bits.join(" · ") }), ...tags),
-        el("div", { className: "prow pbtns" }, el("span", { className: "pmeta", textContent: t("add_voice") + ":" }), addFile, addMic, el("span", { className: "spacer" }), del));
+        el("div", { className: "prow pbtns" }, el("span", { className: "pmeta", textContent: t("add_voice") + ":" }), addFile, addMic,
+          ...(confirmBtn ? [confirmBtn] : []), el("span", { className: "spacer" }), del));
     });
+    const unconfirmed = S.list.filter((p) => p.auto && !p.confirmed);
+    const confirmAll = unconfirmed.length > 1
+      ? el("button", { className: "small" }, icText("check", t("confirm_all")))
+      : null;
+    if (confirmAll) confirmAll.onclick = () => confirmAllPeople(unconfirmed);
     root.replaceChildren(
-      el("div", { className: "toolbar" }, el("h2", { textContent: t("people") }), el("span", { className: "spacer" }), addPanel()),
+      el("div", { className: "toolbar" }, el("h2", { textContent: t("people") }), el("span", { className: "spacer" }),
+        ...(confirmAll ? [confirmAll] : []), addPanel()),
       el("p", { className: "hint", textContent: t("people_hint") }),
       ...(S.error ? [el("p", { className: "perr", textContent: S.error })] : []),
       ...(cards.length ? cards : [el("p", { className: "hint", textContent: t("no_people") })]));
@@ -78,6 +92,19 @@
     cancel.onclick = () => { S.adding = false; S.error = ""; draw(); };
     queueMicrotask(() => name.focus());
     return el("div", { className: "paddbox" }, name, file, mic, cancel);
+  }
+
+  async function confirmOne(id) {
+    S.error = "";
+    try { await call("confirm_person", id); } catch (e) { S.error = msg(e); }
+    refresh();
+  }
+  async function confirmAllPeople(list) {
+    S.error = "";
+    try {
+      for (const p of list) await call("confirm_person", p.id);
+    } catch (e) { S.error = msg(e); }
+    refresh();
   }
 
   async function run(fn) {
