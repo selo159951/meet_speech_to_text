@@ -404,3 +404,31 @@ def test_language_mode_setting_and_ct2_arguments(monkeypatch):
     asr.set_setting("language", "auto")
     eng.transcribe(__import__("numpy").zeros(16000, "float32"), 1.0, lambda p: None)
     assert seen["language"] is None and seen["multilingual"] is False
+
+
+# ---------- many speakers and names ----------
+def test_consolidate_keeps_a_class_apart_and_leaves_ordinary_meetings_alone():
+    from backend.diarize import consolidate
+
+    # five real participants (30 s each) and a few short stray voices in between
+    turns, t = [], 0.0
+    for k in range(5):
+        turns.append(Turn(t, t + 30, k)); t += 30
+        turns.append(Turn(t, t + 2, 10 + k)); t += 2  # a 2 s stray voice
+    out = consolidate(turns)
+    assert out is not None and sorted({x.speaker for x in out}) == [0, 1, 2, 3, 4]
+    assert out[1].speaker == 0  # the stray voice after speaker 0 joins the nearest real participant (the one before it)
+    # three real participants only: nothing to keep apart, the caller forces its usual few speakers
+    assert consolidate([Turn(0, 60, 0), Turn(60, 120, 1), Turn(120, 180, 2), Turn(180, 183, 7)]) is None
+
+
+def test_a_voice_that_introduces_itself_twice_gets_no_name():
+    from backend.names import detect_names
+
+    def s(i, spk, text):
+        return {"id": i, "speaker": spk, "text_edited": text}
+
+    segs = [s(0, 0, "Hi, I am Mert Yalçın and I teach physics."), s(1, 1, "My name is Elif."),
+            s(2, 1, "And I am Greta, the teacher."), s(3, 2, "I am Özge Koriersu.")]
+    names = detect_names(segs, {"0": "Speaker 1", "1": "Speaker 2", "2": "Speaker 3"})
+    assert names == {0: "Mert", 2: "Özge"}  # speaker 2 said Elif and Greta: unnamed; Ö is a name letter
