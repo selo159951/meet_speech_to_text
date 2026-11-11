@@ -441,3 +441,49 @@ def test_lower_case_introductions_are_found():
             {"id": 1, "speaker": 1, "text_edited": "adım ışıl ve ben öğrenciyim"},
             {"id": 2, "speaker": 2, "text_edited": "my name is not important"}]
     assert detect_names(segs, {"0": "Speaker 1", "1": "Speaker 2", "2": "Speaker 3"}) == {0: "Melisa", 1: "Işıl"}
+
+
+def test_detect_intros_only_clear_single_names():
+    from backend.names import detect_intros
+
+    def s(i, spk, text):
+        return {"id": i, "speaker": spk, "text_edited": text}
+
+    segs = [s(0, 0, "Hello, my name is Elif and I am 16."), s(1, 1, "I am Ece. And I am Işıl, the other one."),
+            s(2, 2, "Elif sen ne dersin?"), s(3, 3, "hi my name is melisa")]
+    assert detect_intros(segs) == {0: "Elif", 3: "Melisa"}  # speaker 1 gave two names; being addressed is not an introduction
+
+
+def test_sentence_decoding_keeps_a_short_interjection_with_its_own_voice():
+    import numpy as np
+    from backend import diarize
+
+    # three speakers; sentence 2 is a 1 s remark that sounds like speaker 2 between two sentences of speaker 0
+    em = np.array([[.9, .1, .1], [.9, .1, .1], [.3, .6, .1], [.9, .1, .1], [.9, .1, .1]], np.float32)
+    assert diarize.decode_sentences(em, [9, .3, .2, .2, .3], [False] * 5) == [0, 0, 1, 0, 0]
+    # an uncertain one (0.5 / 0.45) stays with the neighbour: a change has a price
+    weak = np.array([[.9, .1], [.9, .1], [.5, .45], [.9, .1]], np.float32)
+    assert diarize.decode_sentences(weak, [9, .3, .2, .2], [False] * 4) == [0, 0, 0, 0]
+
+
+def test_split_speaker_is_merged_but_different_people_are_not(monkeypatch):
+    import numpy as np
+    from backend import diarize, people
+    from backend.merge import Word
+
+    words = [Word(i * 2.0, i * 2.0 + 1.5, " w") for i in range(40)]
+    spk = [0] * 10 + [1] * 10 + [2] * 10 + [0] * 10
+    vecs = {0: np.array([1, 0, 0], np.float32), 1: np.array([0.5, 0.866, 0], np.float32), 2: np.array([0.97, 0.05, 0.2], np.float32)}
+
+    def fake_win(speech, max_seconds=90):
+        return np.tile(vecs[int(round(float(speech[0])))], (4, 1))
+
+    # sample values encode the speaker: every word of speaker s is a run of the value s
+    samples = np.zeros(100 * 16000, np.float32)
+    for w, l in zip(words, spk):
+        samples[int(w.start * 16000):int(w.end * 16000)] = l
+    monkeypatch.setattr(diarize, "models_available", lambda: True)
+    monkeypatch.setattr(people, "window_embeddings", fake_win)
+    out = diarize.merge_split_speakers(samples, words, spk, threshold=0.72)
+    # 0 and 2 are 0.97 alike and each other's best match: one person; 1 is only 0.5 alike
+    assert sorted(set(out)) == [0, 1] and out[:10] == out[20:30] and out[10:20] != out[:10]

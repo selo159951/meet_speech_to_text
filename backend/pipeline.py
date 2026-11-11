@@ -145,10 +145,12 @@ def _transcribe_and_finish(job_id, jp, job, samples, duration, parts, device, pa
     t_ref = time.time()
     spk = assign_speakers(words, turns)
     spk = diarize.refine_by_sentence(samples, words, spk, lambda p: dprog(0.85 + p * 0.15))
+    spk = diarize.merge_split_speakers(samples, words, spk)  # one person heard as two speakers
     segments = build_segments(words, turns, speakers=spk)
 
     n = len({s["speaker"] for s in segments}) or 1
     speakers = {str(i): f"Speaker {i + 1}" for i in range(n)}
+    from . import names
     from .names import detect_names
 
     for k, name in detect_names(segments, speakers).items():
@@ -156,6 +158,8 @@ def _transcribe_and_finish(job_id, jp, job, samples, duration, parts, device, pa
     from . import people  # ---- people: saved voices override the guesses (free when nobody is saved)
 
     voices = people.apply_to_job(samples, segments, speakers)
+    # people are learned only after the recording is saved (the audio file is needed): remember who introduced themselves
+    intros = names.detect_intros(segments) if asr.get_settings().get("learn_people", True) else {}
     timings = {"audio": round(duration, 1), "device": device, "parallel": parallel,
                "decode": round(t_decoded - t_start, 1), "asr": round(asr_secs, 1),
                "diar": round(diar["secs"] + (time.time() - t_ref), 1), "total": round(time.time() - t_start, 1)}
@@ -169,6 +173,13 @@ def _transcribe_and_finish(job_id, jp, job, samples, duration, parts, device, pa
         # frozen copy of the model output for the "Original" export
         original_segments=[{k: s[k] for k in ("start", "end", "speaker", "text_original")} for s in segments],
     )
+    if intros:  # learn the voices of the people who introduced themselves (never fails the recording)
+        try:
+            mine = {k: v for k, v in intros.items() if speakers.get(str(k)) == v}
+            if mine:
+                store.update_job(job_id, learned=people.learn_from_job(job_id, mine))
+        except Exception:
+            traceback.print_exc()
     try:  # meeting mode: analyse right away; this must never fail a transcription
         if asr.get_settings().get("meeting_mode"):
             from . import analysis

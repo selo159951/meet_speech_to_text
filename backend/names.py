@@ -30,6 +30,31 @@ def _is_default(label: str | None, spk: int) -> bool:
     return not label or label in (f"Speaker {spk + 1}", f"Konuşmacı {spk + 1}")
 
 
+def intro_names(text: str) -> list[str]:
+    """Every name the text introduces ("I am Ece. And I am Işıl" -> both), only near its start."""
+    out: list[str] = []
+    for rx in SELF_INTRO:
+        for m in rx.finditer(text):
+            if m.start() < INTRO_WINDOW and m.group(1) not in NOT_NAMES and m.group(1) not in out:
+                out.append(m.group(1))
+    for m in LOWER_INTRO.finditer(text):
+        nm = m.group(1).capitalize()
+        if m.start() < INTRO_WINDOW and m.group(1) not in LOWER_STOP and nm not in NOT_NAMES and nm not in out:
+            out.append(nm)
+    return out
+
+
+def detect_intros(segments: list[dict]) -> dict[int, str]:
+    """Only the clear self-introductions, one name per speaker ("my name is X"): what a voice may be learned from.
+    A speaker who introduced itself under two names is several people and is left out."""
+    found: dict[int, list[str]] = {}
+    for seg in segments:
+        for nm in intro_names(seg["text_edited"]):
+            if nm not in found.setdefault(seg["speaker"], []):
+                found[seg["speaker"]].append(nm)
+    return {spk: names[0] for spk, names in found.items() if len(names) == 1}
+
+
 def detect_names(segments: list[dict], speakers: dict) -> dict[int, str]:
     """Return {speaker_index: name} for speakers still labelled 'Speaker N'.
     A speaker that introduces itself under two different names is several people the voice

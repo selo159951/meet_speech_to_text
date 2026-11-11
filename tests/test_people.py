@@ -115,19 +115,45 @@ def test_multiple_voices_detected():
 
 # ---------------- assignment ----------------
 def test_assign_thresholds():
-    m, s = people.assign({0: {"a": 0.80, "b": 0.10}, 1: {"a": 0.20, "b": 0.42}})
-    assert m == {0: ("a", 0.80)} and s == {1: ("b", 0.42)}
-    m, s = people.assign({0: {"a": 0.30}})
+    # applied from 0.65, suggested from 0.50 (measured: different people reach 0.66 at most, 99% stay below 0.62)
+    m, s = people.assign({0: {"a": 0.80, "b": 0.10}, 1: {"a": 0.20, "b": 0.55}})
+    assert m == {0: ("a", 0.80)} and s == {1: ("b", 0.55)}
+    m, s = people.assign({0: {"a": 0.40}})
     assert m == {} and s == {}
 
 
 def test_assign_one_person_per_speaker():
     # both speakers like "a" best; the pair maximising the total gives speaker 1 -> a
-    m, s = people.assign({0: {"a": 0.70, "b": 0.60}, 1: {"a": 0.90, "b": 0.10}})
-    assert m == {1: ("a", 0.90), 0: ("b", 0.60)}
+    m, s = people.assign({0: {"a": 0.80, "b": 0.70}, 1: {"a": 0.95, "b": 0.10}})
+    assert m == {1: ("a", 0.95), 0: ("b", 0.70)}
     # nobody is used twice even when only one person exists
-    m, s = people.assign({0: {"a": 0.60}, 1: {"a": 0.80}})
-    assert m == {1: ("a", 0.80)} and s == {}
+    m, s = people.assign({0: {"a": 0.70}, 1: {"a": 0.90}})
+    assert m == {1: ("a", 0.90)} and s == {}
+
+
+def test_a_close_second_person_makes_the_match_only_a_suggestion():
+    ps = []
+    for name, vec in (("A", [1.0, 0.0]), ("B", [0.8, 0.6])):  # A and B are 0.8 alike
+        p = people.create_person(name)
+        raw = people._read(p["id"]); raw["embedding"] = vec; raw["samples"] = [{"seconds": 40}]; people._write(raw)
+        ps.append(people._read(p["id"]))
+    out = people.match_prints({0: np.array([0.95, 0.31], np.float32) / np.linalg.norm([0.95, 0.31])}, ps)
+    assert out["matches"] == {} and out["suggestions"]["0"]["name"] in ("A", "B")  # 0.95 vs 0.95: not clearly better
+    out = people.match_prints({0: np.array([1.0, 0.0], np.float32)}, [ps[0]])
+    assert out["matches"]["0"]["name"] == "A"
+
+
+def test_automatic_people_only_suggest_until_confirmed():
+    p = people.create_person("Auto")
+    raw = people._read(p["id"]); raw.update(embedding=[1.0, 0.0], samples=[{"seconds": 40}], auto=True, confirmed=False, meetings=1)
+    people._write(raw)
+    out = people.match_prints({0: np.array([1.0, 0.0], np.float32)}, [people._read(p["id"])])
+    assert out["matches"] == {} and out["suggestions"]["0"]["name"] == "Auto"
+    people.confirm_person(p["id"])
+    out = people.match_prints({0: np.array([1.0, 0.0], np.float32)}, [people._read(p["id"])])
+    assert out["matches"]["0"]["name"] == "Auto"
+    raw = people._read(p["id"]); raw.update(confirmed=False, meetings=2); people._write(raw)  # heard in two meetings
+    assert people.match_prints({0: np.array([1.0, 0.0], np.float32)}, [raw])["matches"]
 
 
 def test_match_prints_uses_stored_people(monkeypatch):
@@ -206,3 +232,77 @@ def test_recording_status_when_idle():
     assert people.cancel_recording() == {"ok": True}
     with pytest.raises(ValueError):
         people.stop_recording(None, "x")
+
+
+# ---------------- learning people from a meeting ----------------
+def _job_with_speakers(monkeypatch, spk_secs):
+    """A finished job whose speakers talk spk_secs[i] seconds each; audio and voice prints are faked."""
+    from backend import audio, chunking
+
+    segs, t = [], 0.0
+    for i, secs in enumerate(spk_secs):
+        segs.append({"id": i, "start": t, "end": t + secs, "speaker": i, "text_original": "x", "text_edited": "x", "words": []})
+        t += secs
+    jid = store.create_job("m.mp3")
+    store.update_job(jid, status="done", segments=segs, speakers={str(i): f"Speaker {i + 1}" for i in range(len(spk_secs))})
+    monkeypatch.setattr(audio, "decode", lambda p: (np.zeros(int(t * people.SR), np.float32), t))
+    monkeypatch.setattr(chunking, "speech_regions", lambda x: [(0.0, t)])
+    return jid
+
+
+def _fake_voices(monkeypatch, vectors):
+    """window_embeddings returns the vector of the speaker whose time range the call is for (by length marker)."""
+    state = {"calls": []}
+    monkeypatch.setattr(people, "window_embeddings", lambda speech, max_seconds=60: np.tile(vectors[state["next"]], (max(4, int(len(speech) / people.SR / 3)), 1)))
+    monkeypatch.setattr(people, "_speaker_speech", lambda samples, segs, spk, regions: (state.__setitem__("next", spk), np.zeros(int(segs[spk]["end"] - segs[spk]["start"]) * people.SR, np.float32))[1])
+
+    def fake_add(job_id, speaker, pid, name=None):
+        state["calls"].append((speaker, pid, name))
+        if pid is None:
+            pid = people.create_person(name)["id"]
+        raw = people._read(pid); raw["samples"] = raw.get("samples", []) + [{"seconds": 40, "emb": list(map(float, vectors[speaker])), "windows": 4}]
+        raw["embedding"] = list(map(float, vectors[speaker])); people._write(raw)
+        return people._public(raw)
+
+    monkeypatch.setattr(people, "add_sample_from_job", fake_add)
+    return state
+
+
+def uvec(*v):
+    v = np.array(v, np.float32)
+    return v / np.linalg.norm(v)
+
+
+def test_a_clean_self_introduction_is_learned_as_an_automatic_person(monkeypatch):
+    state = _fake_voices(monkeypatch, [uvec(1, 0, 0), uvec(0, 1, 0)])
+    jid = _job_with_speakers(monkeypatch, [45, 12])
+    done = people.learn_from_job(jid, {0: "Elif", 1: "Ece"})
+    assert [(d["name"], d["action"]) for d in done] == [("Elif", "created"), ("Ece", "skipped")]  # 12 s is too little
+    assert done[1]["why"] == "too_little_speech"
+    p = people.list_people()[0]
+    assert p["name"] == "Elif" and p["auto"] and not p["confirmed"] and p["meetings"] == 1
+
+
+def test_same_name_is_enriched_only_by_a_similar_voice_and_conflicts_are_left_alone(monkeypatch):
+    _fake_voices(monkeypatch, [uvec(1, 0, 0)])
+    people.learn_from_job(_job_with_speakers(monkeypatch, [45]), {0: "Elif"})
+    pid = people.list_people()[0]["id"]
+    _fake_voices(monkeypatch, [uvec(1, 0.2, 0), uvec(0, 1, 0)])  # speaker 0 sounds like Elif, speaker 1 does not
+    done = people.learn_from_job(_job_with_speakers(monkeypatch, [45, 45]), {0: "Elif", 1: "Elif"})
+    assert (done[0]["action"], done[1]["action"], done[1]["why"]) == ("enriched", "skipped", "same_name_other_voice")
+    assert people._read(pid)["meetings"] == 2 and len(people.list_people()) == 1
+    _fake_voices(monkeypatch, [uvec(1, 0.05, 0)])
+    done = people.learn_from_job(_job_with_speakers(monkeypatch, [45]), {0: "Burak"})  # sounds like Elif, says another name
+    assert done[0]["action"] == "skipped" and done[0]["why"].startswith("sounds_like:") and len(people.list_people()) == 1
+
+
+def test_several_voices_in_one_speaker_are_not_learned(monkeypatch):
+    monkeypatch.setattr(people, "_speaker_speech", lambda *a: np.zeros(45 * people.SR, np.float32))
+    from backend import audio, chunking
+
+    jid = _job_with_speakers(monkeypatch, [45])
+    monkeypatch.setattr(people, "_speaker_speech", lambda *a: np.zeros(45 * people.SR, np.float32))
+    mixed = np.stack([uvec(1, 0, 0)] * 5 + [uvec(0, 1, 0)] * 5)
+    monkeypatch.setattr(people, "window_embeddings", lambda speech, max_seconds=60: mixed)
+    done = people.learn_from_job(jid, {0: "Elif"})
+    assert done[0]["action"] == "skipped" and done[0]["why"] == "several_voices" and not people.list_people()

@@ -132,7 +132,8 @@ class Api(SystemApi, LlmApi):
 
     # ---------------- settings ----------------
     def get_settings(self) -> dict:
-        return {**asr.status(), "meeting_mode": bool(asr.get_settings().get("meeting_mode", False)), "language": asr.language_mode()}
+        return {**asr.status(), "meeting_mode": bool(asr.get_settings().get("meeting_mode", False)), "language": asr.language_mode(),
+                "learn_people": bool(asr.get_settings().get("learn_people", True))}
 
     def set_settings(self, values: dict) -> dict:
         if "use_gpu" in values:
@@ -141,6 +142,8 @@ class Api(SystemApi, LlmApi):
             asr.set_setting("ui_lang", values["ui_lang"])
         if "meeting_mode" in values:
             asr.set_setting("meeting_mode", bool(values["meeting_mode"]))
+        if "learn_people" in values:
+            asr.set_setting("learn_people", bool(values["learn_people"]))
         if values.get("language") in asr.LANGUAGES:
             asr.set_setting("language", values["language"])
         return self.get_settings()
@@ -318,6 +321,11 @@ class Api(SystemApi, LlmApi):
 
         _job(job_id)
         return people.add_sample_from_job(job_id, int(speaker), person_id or None, name)
+
+    def confirm_person(self, person_id: str) -> dict:
+        from . import people
+
+        return people.confirm_person(person_id)
 
     def rematch_job(self, job_id: str) -> dict:
         from . import people

@@ -68,13 +68,72 @@ def _make(num_clusters: int):
 MIN_SENT = 0.8   # seconds of speech needed for a reliable voice print
 MARGIN = 0.15    # how much closer to another speaker a sentence must be to move
 
+# ---- sentence-level speaker decoding (second pass) ----------------------------------------------
+SHORT_SENT = 0.4      # sentences shorter than this are left with the label they have
+REF_SENT = 1.5        # only sentences at least this long serve as reference voices
+KNN = 3               # a sentence is compared with the 3 most similar reference sentences of a speaker
+BETA = 12.0           # similarity difference -> log-probability (0.1 similarity = 1.2 nats)
+SWITCH = 1.4          # cost of changing speaker between two sentences (nats)
+SWITCH_GAP = 0.8      # a pause of this many seconds makes a change half as expensive
+SWITCH_CLOSURE = 0.5  # factor after a closing phrase ("Thank you.") - the next sentence is likely somebody else
+
+
+def _emissions(E: np.ndarray, labels: list[int], dur: list[float]) -> tuple[np.ndarray, list[int]]:
+    """Similarity of every sentence to every speaker: half the (leave-one-out) average voice, half the
+    mean of the KNN closest long reference sentences of that speaker. Shape (sentences, speakers)."""
+    spk = sorted(set(labels))
+    em = np.zeros((len(E), len(spk)), np.float32)
+    for c, s in enumerate(spk):
+        idx = [k for k, l in enumerate(labels) if l == s]
+        ref = [k for k in idx if dur[k] >= REF_SENT] or idx
+        tot = E[idx].sum(0)
+        for k in range(len(E)):
+            own = k in idx
+            m = tot - (E[k] if own else 0)
+            cen = float(E[k] @ (m / (np.linalg.norm(m) + 1e-9))) if (len(idx) > 1 or not own) else float(E[k] @ E[idx[0]])
+            cand = [r for r in ref if r != k]
+            sims = sorted((float(E[k] @ E[r]) for r in cand), reverse=True)[:KNN]
+            knn = float(np.mean(sims)) if sims else cen
+            em[k, c] = 0.5 * cen + 0.5 * knn
+    return em, spk
+
+
+def decode_sentences(em: np.ndarray, gaps: list[float], closure: list[bool]) -> list[int]:
+    """Viterbi over the sentence sequence: best speaker path = sum of BETA*(similarity - best similarity)
+    minus a cost for every change of speaker. Returns the column index chosen for every sentence."""
+    n, m = em.shape
+    logp = BETA * (em - em.max(1, keepdims=True))
+    best = np.zeros((n, m), np.float32)
+    back = np.zeros((n, m), np.int32)
+    best[0] = logp[0]
+    for k in range(1, n):
+        cost = SWITCH * (0.5 ** (max(gaps[k], 0.0) / SWITCH_GAP)) if False else SWITCH * (1.0 - 0.5 * min(gaps[k] / SWITCH_GAP, 1.0))
+        if closure[k - 1]:
+            cost *= SWITCH_CLOSURE
+        for c in range(m):
+            stay = best[k - 1, c]
+            sw = best[k - 1] - cost
+            sw[c] = -1e9
+            j = int(sw.argmax())
+            if stay >= sw[j]:
+                best[k, c], back[k, c] = stay + logp[k, c], c
+            else:
+                best[k, c], back[k, c] = sw[j] + logp[k, c], j
+    path = [int(best[-1].argmax())]
+    for k in range(n - 1, 0, -1):
+        path.append(int(back[k, path[-1]]))
+    return path[::-1]
+
+
+CLOSING = ("thank you", "thanks", "teşekkür", "sağ ol", "okay", "tamam", "great", "all right", "that's all")
+
 
 def refine_by_sentence(samples: np.ndarray, words, speakers: list[int],
                        progress: Callable[[float], None] = lambda p: None) -> list[int]:
-    """Second pass: catch speaker changes the segmentation model missed (e.g. no pause
-    between two people). Every sentence gets a voice print; it moves to another speaker
-    when it is clearly closer to that speaker's average voice than to its own
-    (leave-one-out average, so a sentence can't vote for itself)."""
+    """Second pass. Every sentence gets a voice print; the speaker of each sentence is then decoded for
+    the whole meeting at once (Viterbi): a sentence follows the voice it sounds most like, a change of
+    speaker has a price, so one short "Thank you." cannot flip back and forth on its own noise but a
+    clear change (or a short remark of the moderator between two people) is kept."""
     from .merge import sentences
 
     if not models_available() or not words:
@@ -83,8 +142,8 @@ def refine_by_sentence(samples: np.ndarray, words, speakers: list[int],
 
     ex = so.SpeakerEmbeddingExtractor(
         so.SpeakerEmbeddingExtractorConfig(model=str(models_dir() / EMB_MODEL), num_threads=THREADS))
-    sents = [(i, j) for i, j in sentences(words) if words[j - 1].end - words[i].start >= MIN_SENT]
-    embs, labels = [], []
+    sents = [(i, j) for i, j in sentences(words) if words[j - 1].end - words[i].start >= SHORT_SENT]
+    embs, labels, dur, gaps, closure = [], [], [], [], []
     for n, (i, j) in enumerate(sents):
         a, b = int(words[i].start * 16000), int(words[j - 1].end * 16000)
         st = ex.create_stream()
@@ -92,36 +151,90 @@ def refine_by_sentence(samples: np.ndarray, words, speakers: list[int],
         st.input_finished()
         e = np.array(ex.compute(st), dtype=np.float32)
         embs.append(e / (np.linalg.norm(e) + 1e-9))
-        votes = np.bincount(speakers[i:j])
-        labels.append(int(votes.argmax()))
-        progress((n + 1) / len(sents))
-    if len(set(labels)) < 2:
+        labels.append(int(np.bincount(speakers[i:j]).argmax()))
+        dur.append(words[j - 1].end - words[i].start)
+        gaps.append(words[i].start - words[sents[n - 1][1] - 1].end if n else 9.0)
+        txt = " ".join(w.text for w in words[i:j]).strip().lower().strip(".!?… ")
+        closure.append(txt.endswith(CLOSING) or txt in CLOSING)
+        progress(0.7 * (n + 1) / len(sents))
+    if len(set(labels)) < 2 or len(sents) < 3:
         return speakers
     E = np.stack(embs)
+    em, spk = _emissions(E, labels, dur)
+    path = decode_sentences(em, gaps, closure)
     out = list(speakers)
-    for _ in range(2):  # a second round uses the corrected averages
-        sums = {s: E[[k for k, l in enumerate(labels) if l == s]].sum(0) for s in set(labels)}
-        counts = {s: labels.count(s) for s in set(labels)}
-        changed = False
-        for k, (i, j) in enumerate(sents):
-            own = labels[k]
-            if counts[own] < 2:  # don't strip a speaker's only sentence
-                continue
-            sims = {}
-            for s in sums:
-                c = sums[s] - (E[k] if s == own else 0)
-                if s == own or counts[s] > 0:
-                    sims[s] = float(E[k] @ (c / (np.linalg.norm(c) + 1e-9)))
-            best = max(sims, key=sims.get)
-            if best != own and sims[best] - sims[own] > MARGIN and sims[best] > 0.3:
-                labels[k] = best
-                counts[own] -= 1; counts[best] += 1
-                sums[own] = sums[own] - E[k]; sums[best] = sums[best] + E[k]
-                out[i:j] = [best] * (j - i)
-                changed = True
-        if not changed:
-            break
+    for (i, j), c in zip(sents, path):
+        out[i:j] = [spk[c]] * (j - i)
+    progress(1.0)
     return out
+
+
+# ---- one person heard as two speakers -----------------------------------------------------------
+MERGE_SIM = 0.72           # voice prints of two speakers this alike are one person (measured: two different
+                           # people reach at most 0.66, p99 0.62; the same person is 0.81 or more)
+MERGE_MARGIN = 0.05        # ... and each must be clearly closer to the other than to anybody else
+MERGE_MIN_SECONDS = 8.0    # a voice print needs this much speech to be trusted
+
+
+def _spans(words, spk: list[int], s: int, gap: float = 0.3) -> list[tuple[float, float]]:
+    out: list[list[float]] = []
+    for w, l in zip(words, spk):
+        if l != s:
+            continue
+        if out and w.start - out[-1][1] <= gap:
+            out[-1][1] = w.end
+        else:
+            out.append([w.start, w.end])
+    return [(a, b) for a, b in out]
+
+
+def merge_split_speakers(samples: np.ndarray, words, spk: list[int], threshold: float = MERGE_SIM) -> list[int]:
+    """Merge speakers that are the same voice (a person whose voice changed with the microphone or
+    the room can be split in two). Only mutual best matches above the threshold are merged, and
+    never a speaker with too little speech to judge. Returns the speaker list with contiguous ids
+    in order of first appearance."""
+    if not models_available() or not words or len(set(spk)) < 2:
+        return spk
+    from . import people
+
+    spk = list(spk)
+    prints: dict[int, np.ndarray] = {}
+    secs: dict[int, float] = {}
+
+    def voice(s: int):
+        if s not in prints:
+            parts = [samples[int(a * 16000):int(b * 16000)] for a, b in _spans(words, spk, s)]
+            speech = np.concatenate(parts) if parts else samples[:0]
+            secs[s] = len(speech) / 16000
+            E = people.window_embeddings(speech, max_seconds=90) if secs[s] >= MERGE_MIN_SECONDS else None
+            prints[s] = people._unit(E.sum(0)) if E is not None and len(E) else None
+        return prints[s]
+
+    while True:
+        ids = [s for s in sorted(set(spk)) if voice(s) is not None]
+        if len(ids) < 2:
+            break
+        M = np.array([[float(prints[a] @ prints[b]) if a != b else -1.0 for b in ids] for a in ids])
+        best = None
+        for i, a in enumerate(ids):
+            j = int(M[i].argmax())
+            if int(M[j].argmax()) != i or M[i, j] < threshold or i > j:
+                continue
+            second = max(float(np.partition(M[i], -2)[-2]) if len(ids) > 2 else -1.0,
+                         float(np.partition(M[j], -2)[-2]) if len(ids) > 2 else -1.0)
+            if M[i, j] - second < MERGE_MARGIN:
+                continue
+            if best is None or M[i, j] > best[0]:
+                best = (float(M[i, j]), a, ids[j])
+        if best is None:
+            break
+        _, a, b = best  # b joins a
+        spk = [a if l == b else l for l in spk]
+        prints.pop(a, None); prints.pop(b, None); secs.pop(b, None)
+    order: dict[int, int] = {}
+    for l in spk:
+        order.setdefault(l, len(order))
+    return [order[l] for l in spk]
 
 
 class Cancelled(Exception):

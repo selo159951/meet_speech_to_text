@@ -27,9 +27,15 @@ TARGET = 40.0        # what the UI asks for
 MAX_USED = 60.0      # at most this much speech of one sample is used
 MAX_JOB_SPEECH = 120.0  # speech per speaker used when matching (bounds the time on long meetings)
 
-# Calibrated on real data, see the report in the commit message / README of this feature.
-MATCH = 0.50         # at least this similar -> the name is applied
-SUGGEST = 0.35       # between SUGGEST and MATCH -> "Selim olabilir?"
+# Calibrated on a real 20-person recording (see docs/toplanti-modu-rapor.md): the same person is 0.81-0.91 alike,
+# two different people 0.28 on average and 0.66 at most (99% below 0.62). A wrong name is far worse than no name.
+MATCH = 0.65         # at least this similar (and clearly better than the next person) -> the name is applied
+SUGGEST = 0.50       # between SUGGEST and MATCH -> "Selim olabilir?"
+MATCH_MARGIN = 0.08  # the best person must beat the second best by this much to be applied automatically
+LEARN_MIN_SPEECH = 15.0   # net speech needed before a voice is learned from a meeting
+LEARN_COHESION = 0.75     # the 3 s windows of the speaker must be this alike (otherwise it is several people)
+LEARN_SAME_NAME = 0.60    # a new voice under an existing name must be at least this close to that person
+LEARN_CONFLICT = 0.70     # a voice this close to a person with ANOTHER name is not learned
 MULTI_VOICE = 0.45   # two clusters of windows less similar than this -> "more than one voice"
 QUIET_DB = -45.0     # speech quieter than this (dBFS rms) is "too quiet"
 CLIP_FRAC = 0.002    # share of clipped samples that counts as clipping
@@ -165,6 +171,8 @@ def _public(p: dict) -> dict:
     secs = sum(s["seconds"] for s in p["samples"])
     return {"id": p["id"], "name": p["name"], "created": p["created"], "seconds": round(secs, 1),
             "samples": len(p["samples"]), "weak": bool(p.get("weak")), "has_voice": bool(p.get("embedding")),
+            "auto": bool(p.get("auto")), "confirmed": bool(p.get("confirmed", not p.get("auto"))),
+            "meetings": int(p.get("meetings", len(p["samples"]) and 1)),
             "warnings": sorted({w for s in p["samples"] for w in s.get("warnings", [])})}
 
 
@@ -375,6 +383,12 @@ def match_prints(prints: dict[int, np.ndarray], people: list[dict] | None = None
     emb = {p["id"]: np.array(p["embedding"], np.float32) for p in people}
     sim = {s: {pid: float(v @ e) for pid, e in emb.items()} for s, v in prints.items()}
     m, sg = assign(sim)
+    trusted = {p["id"] for p in people if not p.get("auto") or p.get("confirmed") or int(p.get("meetings", 1)) >= 2}
+    for s in list(m):  # applied automatically only when clearly better than everybody else, and the person is trusted
+        pid, sc = m[s]
+        second = max((v for q, v in sim[s].items() if q != pid), default=-1.0)
+        if sc - second < MATCH_MARGIN or pid not in trusted:
+            sg[s] = m.pop(s)
     fmt = lambda d: {str(s): {"person_id": p, "name": names[p], "score": round(sc, 3)} for s, (p, sc) in d.items()}  # noqa: E731
     return {"matches": fmt(m), "suggestions": fmt(sg)}
 
@@ -427,6 +441,90 @@ def accept_suggestion(job_id: str, speaker: int, pid: str) -> dict:
     speakers[k] = p["name"]
     return store.update_job(job_id, speakers=speakers, voice_matches=matches,
                             voice_suggestions=job.get("voice_suggestions") or {})
+
+
+def confirm_person(pid: str) -> dict:
+    """The user checked a person that was learned automatically: from now on the voice names speakers by itself."""
+    with _lock:
+        p = _read(pid)
+        p["confirmed"] = True
+        _write(p)
+    return _public(p)
+
+
+def _speaker_speech(samples: np.ndarray, segments: list[dict], spk: int, regions) -> np.ndarray:
+    parts = []
+    for s in segments:
+        if s["speaker"] != spk:
+            continue
+        for a, b in regions:
+            a, b = max(a, s["start"]), min(b, s["end"])
+            if b - a > 0.2:
+                parts.append(samples[int(a * SR):int(b * SR)])
+    return np.concatenate(parts) if parts else samples[:0]
+
+
+def learn_from_job(job_id: str, intros: dict[int, str]) -> list[dict]:
+    """Learn the voices of the people who introduced themselves in this recording ("my name is X").
+    Careful on purpose: a speaker is only learned with enough clean speech from ONE voice; a name that
+    already exists is only enriched by a voice that sounds like that person; a voice that sounds like
+    somebody with another name is left alone. New people are marked automatic and name speakers by
+    themselves only after the user confirms them or they were heard in a second meeting.
+    Returns what was done, e.g. [{"speaker": 3, "name": "Elif", "action": "created"}]."""
+    from . import audio
+    from .chunking import speech_regions
+
+    job = store.read_transcript(job_id)
+    segs = job.get("segments") or []
+    if not intros or not segs:
+        return []
+    samples, _ = audio.decode(store.job_path(job_id) / "audio.mp3")
+    regions = speech_regions(samples)
+    known = [p for p in _all() if p.get("embedding")]
+    norm = lambda n: " ".join(str(n).casefold().split())  # noqa: E731
+    done = []
+    for spk, name in sorted(intros.items()):
+        row = {"speaker": int(spk), "name": name}
+        try:
+            speech = _speaker_speech(samples, segs, int(spk), regions)
+            if len(speech) / SR < LEARN_MIN_SPEECH:
+                done.append({**row, "action": "skipped", "why": "too_little_speech"})
+                continue
+            E = window_embeddings(speech[:int(MAX_USED * SR)])
+            c = _unit(E.sum(0))
+            if len(E) >= 3 and float(np.mean(E @ c)) < LEARN_COHESION or "multiple_voices" in quality(speech, E):
+                done.append({**row, "action": "skipped", "why": "several_voices"})
+                continue
+            other = max(((float(c @ np.array(p["embedding"], np.float32)), p) for p in known if norm(p["name"]) != norm(name)),
+                        key=lambda t: t[0], default=(-1.0, None))
+            if other[0] >= LEARN_CONFLICT:
+                done.append({**row, "action": "skipped", "why": "sounds_like:" + other[1]["name"]})
+                continue
+            same = next((p for p in known if norm(p["name"]) == norm(name)), None)
+            if same is not None:
+                if float(c @ np.array(same["embedding"], np.float32)) < LEARN_SAME_NAME:
+                    done.append({**row, "action": "skipped", "why": "same_name_other_voice"})
+                    continue
+                if job_id in (same.get("learned_from") or []):
+                    continue
+                add_sample_from_job(job_id, int(spk), same["id"])
+                with _lock:
+                    p = _read(same["id"])
+                    p["meetings"] = int(p.get("meetings", 1)) + 1
+                    p["learned_from"] = sorted(set(p.get("learned_from") or []) | {job_id})
+                    _write(p)
+                done.append({**row, "action": "enriched", "person_id": same["id"]})
+            else:
+                pub = add_sample_from_job(job_id, int(spk), None, name)
+                with _lock:
+                    p = _read(pub["id"])
+                    p.update(auto=True, confirmed=False, meetings=1, learned_from=[job_id])
+                    _write(p)
+                done.append({**row, "action": "created", "person_id": pub["id"]})
+                known.append(_read(pub["id"]))
+        except Exception as e:  # learning is a bonus: it must never fail a recording
+            done.append({**row, "action": "error", "why": str(e)[:120]})
+    return done
 
 
 # ---------------------------------------------------------------- microphone
