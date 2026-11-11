@@ -164,6 +164,7 @@ def _transcribe_and_finish(job_id, jp, job, samples, duration, parts, device, pa
     benchmarks.record(timings, resumed=resume)  # feeds the ETA estimates
     store.update_job(
         job_id, status="done", stage="done", progress=1.0, dprogress=1.0, segments=segments,
+        mixed=asr.language_mode() == "mixed",
         speakers=speakers, timings=timings, **voices,
         # frozen copy of the model output for the "Original" export
         original_segments=[{k: s[k] for k in ("start", "end", "speaker", "text_original")} for s in segments],

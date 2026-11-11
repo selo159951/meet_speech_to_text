@@ -189,6 +189,13 @@ def _tokens(text: str) -> int:
 
 
 def _lang(job: dict) -> str:
+    if job.get("mixed"):  # two languages in one recording: write the analysis in the interface language
+        try:
+            from . import asr
+
+            return "en" if asr.get_settings().get("ui_lang") == "en" else "tr"
+        except Exception:
+            return "tr"
     return "tr" if job.get("language") == "tr" else "en"
 
 

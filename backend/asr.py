@@ -50,6 +50,14 @@ def set_setting(key: str, value) -> None:
     _settings_file().write_text(json.dumps(s), "utf-8")
 
 
+LANGUAGES = ("auto", "mixed", "tr", "en", "de", "fr", "es", "ru", "ar")  # mixed: the language is detected again every 30 seconds
+
+
+def language_mode() -> str:
+    m = get_settings().get("language", "auto")
+    return m if m in LANGUAGES else "auto"
+
+
 def set_use_gpu(on: bool) -> None:
     set_setting("use_gpu", bool(on))
     set_setting("engine", "auto" if on else "ct2-cpu")

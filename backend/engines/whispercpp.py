@@ -270,7 +270,10 @@ class WhisperCppEngine:
                 w.setframerate(16000)
                 w.writeframes(pcm.tobytes())
             out_base = Path(td) / "out"
-            cmd = [str(exe), "-m", str(self.model_path), "-f", str(wav), "-l", "auto",
+            from .. import asr
+
+            mode = asr.language_mode()  # whisper.cpp has no per-window detection: "mixed" is detected per part, like "auto"
+            cmd = [str(exe), "-m", str(self.model_path), "-f", str(wav), "-l", mode if mode not in ("auto", "mixed") else "auto",
                    "-ojf", "-of", str(out_base), "-t", str(threads), "--print-progress",
                    "-mc", "0"]  # no previous-text conditioning (avoids repetition loops)
             cmd += self.extra_args

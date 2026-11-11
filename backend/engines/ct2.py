@@ -103,9 +103,14 @@ class CT2Engine:
 
     def transcribe(self, samples: np.ndarray, duration: float,
                    progress: Callable[[float], None]) -> tuple[list[Word], str]:
+        from .. import asr
+
+        mode = asr.language_mode()
+        # auto: one language per part; mixed: the language is detected for every 30 s window, so a
+        # sentence in English inside a Turkish meeting is written in English (and the other way round)
         segs, info = self._model.transcribe(
-            samples, language=None, word_timestamps=True, vad_filter=True,
-            condition_on_previous_text=False,
+            samples, language=mode if mode not in ("auto", "mixed") else None, multilingual=(mode == "mixed"),
+            word_timestamps=True, vad_filter=True, condition_on_previous_text=False,
         )
         words: list[Word] = []
         for seg in segs:

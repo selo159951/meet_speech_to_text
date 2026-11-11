@@ -374,3 +374,33 @@ def test_file_without_audio_track_gives_a_clear_error(tmp_path):
             out.mux(p)
     with pytest.raises(ValueError, match="no audio"):
         audio.convert(src, None)
+
+
+def test_language_mode_setting_and_ct2_arguments(monkeypatch):
+    import types
+
+    from backend import asr, bridge
+    from backend.engines.ct2 import CT2Engine
+
+    assert asr.language_mode() == "auto"
+    api = bridge.Api()
+    assert api.set_settings({"language": "klingon"})["language"] == "auto"  # unknown values are ignored
+    assert api.set_settings({"language": "mixed"})["language"] == "mixed"
+
+    seen = {}
+
+    class FakeModel:
+        def transcribe(self, samples, **kw):
+            seen.update(kw)
+            return iter([]), types.SimpleNamespace(language="tr")
+
+    eng = CT2Engine("cpu", "int8")
+    eng._model = FakeModel()
+    eng.transcribe(__import__("numpy").zeros(16000, "float32"), 1.0, lambda p: None)
+    assert seen["language"] is None and seen["multilingual"] is True
+    asr.set_setting("language", "en")
+    eng.transcribe(__import__("numpy").zeros(16000, "float32"), 1.0, lambda p: None)
+    assert seen["language"] == "en" and seen["multilingual"] is False
+    asr.set_setting("language", "auto")
+    eng.transcribe(__import__("numpy").zeros(16000, "float32"), 1.0, lambda p: None)
+    assert seen["language"] is None and seen["multilingual"] is False

@@ -132,7 +132,7 @@ class Api(SystemApi, LlmApi):
 
     # ---------------- settings ----------------
     def get_settings(self) -> dict:
-        return {**asr.status(), "meeting_mode": bool(asr.get_settings().get("meeting_mode", False))}
+        return {**asr.status(), "meeting_mode": bool(asr.get_settings().get("meeting_mode", False)), "language": asr.language_mode()}
 
     def set_settings(self, values: dict) -> dict:
         if "use_gpu" in values:
@@ -141,6 +141,8 @@ class Api(SystemApi, LlmApi):
             asr.set_setting("ui_lang", values["ui_lang"])
         if "meeting_mode" in values:
             asr.set_setting("meeting_mode", bool(values["meeting_mode"]))
+        if values.get("language") in asr.LANGUAGES:
+            asr.set_setting("language", values["language"])
         return self.get_settings()
 
     # ---------------- meeting analysis ----------------

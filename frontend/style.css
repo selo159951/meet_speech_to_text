@@ -229,3 +229,5 @@ button.icon .ic { width:16px; height:16px; vertical-align:middle; }
 button.small.icon .ic { width:14px; height:14px; }
 kbd .ic { width:12px; height:12px; vertical-align:-.1em; }
 .verdict .ic { width:1.1em; height:1.1em; vertical-align:-.15em; }
+
+.langmode { display:block; margin-top:10px; font-size:13px; color:var(--muted); } .langmode select { margin-left:6px; }

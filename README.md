@@ -8,6 +8,7 @@ Turns meeting recordings (40–80 min and longer) into an editable transcript wi
 
 ## Features
 - Drag & drop any audio/video file (mp3, wav, m4a, mp4, ogg…); progress with remaining-time estimate
+- Audio **or video** files (only the audio track is read); recording language: automatic, **mixed** (Turkish + English in one meeting) or fixed
 - Language auto-detected (Whisper `large-v3-turbo`; medium/small for slower PCs)
 - Long recordings are processed in ~5 min parts cut only at pauses (never inside a word); an interrupted job can be **resumed**
 - Speakers separated automatically; **People page**: save a person's voice (file, microphone reading, or from a recording) and they are named automatically in later recordings
