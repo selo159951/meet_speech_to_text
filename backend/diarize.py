@@ -90,7 +90,8 @@ def _emissions(E: np.ndarray, labels: list[int], dur: list[float]) -> tuple[np.n
         for k in range(len(E)):
             own = k in idx
             m = tot - (E[k] if own else 0)
-            cen = float(E[k] @ (m / (np.linalg.norm(m) + 1e-9))) if (len(idx) > 1 or not own) else float(E[k] @ E[idx[0]])
+            nrm = float(np.linalg.norm(m))
+            cen = float(E[k] @ (m / nrm)) if nrm > 1e-6 and (len(idx) > 1 or not own) else float(E[k] @ E[idx[0]])
             cand = [r for r in ref if r != k]
             sims = sorted((float(E[k] @ E[r]) for r in cand), reverse=True)[:KNN]
             knn = float(np.mean(sims)) if sims else cen
@@ -102,12 +103,14 @@ def decode_sentences(em: np.ndarray, gaps: list[float], closure: list[bool]) -> 
     """Viterbi over the sentence sequence: best speaker path = sum of BETA*(similarity - best similarity)
     minus a cost for every change of speaker. Returns the column index chosen for every sentence."""
     n, m = em.shape
-    logp = BETA * (em - em.max(1, keepdims=True))
-    best = np.zeros((n, m), np.float32)
+    if n == 0 or m == 0:
+        return [0] * n
+    logp = (BETA * (em - em.max(1, keepdims=True))).astype(np.float64)
+    best = np.zeros((n, m), np.float64)
     back = np.zeros((n, m), np.int32)
     best[0] = logp[0]
     for k in range(1, n):
-        cost = SWITCH * (0.5 ** (max(gaps[k], 0.0) / SWITCH_GAP)) if False else SWITCH * (1.0 - 0.5 * min(gaps[k] / SWITCH_GAP, 1.0))
+        cost = SWITCH * (1.0 - 0.5 * min(max(gaps[k], 0.0) / SWITCH_GAP, 1.0))
         if closure[k - 1]:
             cost *= SWITCH_CLOSURE
         for c in range(m):
@@ -142,12 +145,17 @@ def refine_by_sentence(samples: np.ndarray, words, speakers: list[int],
 
     ex = so.SpeakerEmbeddingExtractor(
         so.SpeakerEmbeddingExtractorConfig(model=str(models_dir() / EMB_MODEL), num_threads=THREADS))
-    sents = [(i, j) for i, j in sentences(words) if words[j - 1].end - words[i].start >= SHORT_SENT]
+    total = len(samples)
+    sents = [(i, j) for i, j in sentences(words) if words[j - 1].end - words[i].start >= SHORT_SENT
+             and min(total, int(words[j - 1].end * 16000)) > max(0, int(words[i].start * 16000))]
+    if not sents:
+        progress(1.0)
+        return speakers
     embs, labels, dur, gaps, closure = [], [], [], [], []
     for n, (i, j) in enumerate(sents):
-        a, b = int(words[i].start * 16000), int(words[j - 1].end * 16000)
+        a, b = max(0, int(words[i].start * 16000)), min(total, int(words[j - 1].end * 16000))
         st = ex.create_stream()
-        st.accept_waveform(16000, samples[a:b])
+        st.accept_waveform(16000, np.ascontiguousarray(samples[a:b], dtype=np.float32))
         st.input_finished()
         e = np.array(ex.compute(st), dtype=np.float32)
         embs.append(e / (np.linalg.norm(e) + 1e-9))
@@ -158,6 +166,7 @@ def refine_by_sentence(samples: np.ndarray, words, speakers: list[int],
         closure.append(txt.endswith(CLOSING) or txt in CLOSING)
         progress(0.7 * (n + 1) / len(sents))
     if len(set(labels)) < 2 or len(sents) < 3:
+        progress(1.0)
         return speakers
     E = np.stack(embs)
     em, spk = _emissions(E, labels, dur)
@@ -182,7 +191,7 @@ def _spans(words, spk: list[int], s: int, gap: float = 0.3) -> list[tuple[float,
         if l != s:
             continue
         if out and w.start - out[-1][1] <= gap:
-            out[-1][1] = w.end
+            out[-1][1] = max(out[-1][1], w.end)
         else:
             out.append([w.start, w.end])
     return [(a, b) for a, b in out]
@@ -194,7 +203,7 @@ def merge_split_speakers(samples: np.ndarray, words, spk: list[int], threshold: 
     never a speaker with too little speech to judge. Returns the speaker list with contiguous ids
     in order of first appearance."""
     if not models_available() or not words or len(set(spk)) < 2:
-        return spk
+        return list(spk)
     from . import people
 
     spk = list(spk)
@@ -203,11 +212,12 @@ def merge_split_speakers(samples: np.ndarray, words, spk: list[int], threshold: 
 
     def voice(s: int):
         if s not in prints:
-            parts = [samples[int(a * 16000):int(b * 16000)] for a, b in _spans(words, spk, s)]
+            parts = [samples[max(0, int(a * 16000)):int(b * 16000)] for a, b in _spans(words, spk, s) if b > a]
             speech = np.concatenate(parts) if parts else samples[:0]
             secs[s] = len(speech) / 16000
             E = people.window_embeddings(speech, max_seconds=90) if secs[s] >= MERGE_MIN_SECONDS else None
-            prints[s] = people._unit(E.sum(0)) if E is not None and len(E) else None
+            v = people._unit(E.sum(0)) if E is not None and len(E) else None
+            prints[s] = v if v is not None and bool(np.all(np.isfinite(v))) else None
         return prints[s]
 
     while True:
