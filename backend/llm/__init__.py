@@ -146,6 +146,21 @@ def build_command(p: dict, prompt_file: str, system_file: str | None, schema: di
     return cmd
 
 
+# llama-completion runs as plain completion (its conversation mode needs a terminal), so the
+# chat format the model was trained on is written out here for the models whose format is known.
+TEMPLATES = {
+    "gemma": "<start_of_turn>user\n{system}\n\n{prompt}<end_of_turn>\n<start_of_turn>model\n",
+    "chatml": "<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+}
+
+
+def wrap(model: str, prompt: str, system: str | None) -> tuple[str, str | None]:
+    t = TEMPLATES.get(catalog.get(model).get("template") or "")
+    if not t:
+        return prompt, system
+    return t.format(system=system or "You are a helpful assistant.", prompt=prompt), None
+
+
 def generate(prompt: str, schema: dict | None = None, system: str | None = None,
              max_tokens: int = 2048, temperature: float = 0.2,
              cancel: threading.Event | None = None) -> dict | str:
@@ -154,6 +169,7 @@ def generate(prompt: str, schema: dict | None = None, system: str | None = None,
     p = plan()
     ctx = _ctx(approx_tokens(prompt + (system or "")), max_tokens)
     p["ctx"] = ctx
+    prompt, system = wrap(p["model"], prompt, system)
     with tempfile.TemporaryDirectory(prefix="mt_llm_") as td:
         pf = Path(td) / "prompt.txt"
         pf.write_text(prompt, "utf-8")

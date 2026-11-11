@@ -84,9 +84,9 @@ def test_catalog_recommend_fit():
     assert catalog.recommend(hw()) == catalog.DEFAULT_SMALL
     assert catalog.fit("gemma-3-4b", hw(small)) == "ok"
     assert catalog.fit("gemma-4-e4b", hw(small)) == "tight"
-    assert catalog.fit("gemma-4-12b", hw(small)) == "tight"  # not on the card, but 16 GB RAM: runs on the CPU
-    assert catalog.fit("gemma-4-12b", hw(small, ram=8)) == "no"
-    assert catalog.fit("gemma-4-12b", hw(ram=32)) == "ok"  # CPU: system RAM
+    assert catalog.fit("qwen3.5-9b", hw(small)) == "tight"  # not on the card, but 16 GB RAM: runs on the CPU
+    assert catalog.fit("qwen3.5-9b", hw(small, ram=8)) == "no"
+    assert catalog.fit("qwen3.5-9b", hw(ram=32)) == "ok"  # CPU: system RAM
     m = catalog.get("qwen3.5-9b")
     assert m["url"] == "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf"
 
@@ -100,7 +100,7 @@ def test_active(tmp_path):
     assert catalog.active(h) == "qwen3.5-4b"  # recommended
     catalog.set_setting("gemma-3-4b")
     assert catalog.active(h) == "gemma-3-4b"  # setting
-    catalog.set_setting("gemma-4-12b")  # not downloaded -> falls back
+    catalog.set_setting("qwen3.5-9b")  # not downloaded -> falls back
     assert catalog.active(h) == "qwen3.5-4b"
     assert llm.available() is False  # no binary
 
@@ -180,7 +180,7 @@ def test_generate_schema_and_files(ready, monkeypatch):
     r = llm.generate("istek", {"type": "object"}, system="sistem")
     assert r == {"summary": "Merhaba şğü"}
     cmd = made[0].cmd
-    assert "--json-schema" in cmd and "-sysf" in cmd and cmd[cmd.index("-ngl") + 1] == "0"
+    assert "--json-schema" in cmd and cmd[cmd.index("-ngl") + 1] == "0"
 
 
 def test_generate_text(ready, monkeypatch):
@@ -210,3 +210,11 @@ def test_generate_cancel_kills(ready, monkeypatch):
 def test_generate_without_binary(tmp_path):
     with pytest.raises(llm.LlmError):
         llm.generate("x")
+
+
+def test_chat_format_is_written_for_known_models():
+    p, s = llm.wrap("qwen3.5-4b", "Soru", "Sistem")
+    assert s is None and p.startswith("<|im_start|>system\nSistem<|im_end|>") and p.endswith("<|im_start|>assistant\n")
+    p, s = llm.wrap("gemma-3-4b", "Soru", "Sistem")
+    assert s is None and p == "<start_of_turn>user\nSistem\n\nSoru<end_of_turn>\n<start_of_turn>model\n"
+    assert llm.wrap("gemma-4-e4b", "Soru", "Sistem") == ("Soru", "Sistem")

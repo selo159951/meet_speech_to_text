@@ -9,7 +9,7 @@ from pathlib import Path
 from .. import models
 
 DEFAULT_SMALL = "qwen3.5-4b"  # measured: best names and tasks of the small ones (docs/toplanti-modu-rapor.md)
-DEFAULT_LARGE = "gemma-4-12b"
+DEFAULT_LARGE = "qwen3.5-9b"  # for cards with 8 GB or more
 
 GB = 1024 ** 3
 
@@ -29,10 +29,11 @@ CATALOG = [
        4.98, 6.0, 6, "Gemma"),
     _m("qwen3.5-9b", "Qwen 3.5 9B", "unsloth/Qwen3.5-9B-GGUF", "Qwen3.5-9B-Q4_K_M.gguf",
        5.68, 7.0, 8, "Apache-2.0"),
-    _m("gemma-4-12b", "Gemma 4 12B", "google/gemma-4-12B-it-qat-q4_0-gguf", "gemma-4-12b-it-qat-q4_0.gguf",
-       6.98, 8.5, 10, "Gemma"),
+    # gemma-4-12b (7 GB) is left out: in the measurement it returned broken JSON (docs/toplanti-modu-rapor.md)
 ]
 
+for _e in CATALOG:  # chat format written out by llm.wrap (ChatML for Qwen; Gemma runs as plain completion)
+    _e["template"] = "chatml" if _e["name"].startswith("qwen") else "gemma" if _e["name"].startswith("gemma-3") else ""
 
 def get(name: str) -> dict | None:
     return next((m for m in CATALOG if m["name"] == name), None)
@@ -74,7 +75,7 @@ def memory_gb(hw: dict) -> float:
 
 def recommend(hw: dict) -> str:
     g = discrete_gpu(hw)
-    return DEFAULT_LARGE if g and g["vram"] / GB >= 10 else DEFAULT_SMALL
+    return DEFAULT_LARGE if g and g["vram"] / GB >= 7.5 else DEFAULT_SMALL
 
 
 def fit(name: str, hw: dict) -> str:
