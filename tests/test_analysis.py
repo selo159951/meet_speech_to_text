@@ -410,3 +410,22 @@ def test_merge_decisions_skips_near_duplicates_and_task_like_ones_are_dropped():
     decisions = [{"text": "Test planı Deniz'e verildi.", "line": 45}, {"text": "Offline mod ertelenecek.", "line": 10}]
     tasks = [{"task": "Test planını hazırlamak", "owner": 0, "due": "", "line": 45}]
     assert [d["line"] for d in analysis.drop_task_like(decisions, tasks)] == [10]
+
+
+def test_decisions_with_real_version_numbers_survive_postprocess():
+    segs = [seg(1, 0, 0, 10, "Offline mod 2.5'e atalım."), seg(2, 1, 10, 20, "Tamam, o zaman bildirimler 2.4'te.")]
+    st = analysis.stats(segs, {"0": "Ali", "1": "Veli"})
+    raw = {"decisions": [{"text": "Offline mod 2.5'e atıldı.", "line": 1}, {"text": "Bildirimler 2.3'te.", "line": 2}],
+           "summary": "Plan 2.4 sürümü için yapıldı. Bir de 2.9 var."}
+    r = analysis.postprocess(raw, segs, st, analysis._name_map({"0": "Ali", "1": "Veli"}), [], "tr")
+    assert [d["line"] for d in r["decisions"]] == [1]  # 2.3 is nowhere in the recording
+    assert r["summary"] == "Plan 2.4 sürümü için yapıldı."
+
+
+def test_one_decision_per_line():
+    segs = hand_made()
+    st = analysis.stats(segs, {"0": "Ali", "1": "Veli"})
+    raw = {"decisions": [{"text": "Plan yapıldı", "line": 2}, {"text": "Plan yapılması kararlaştırıldı", "line": 2},
+                         {"text": "Başka bir karar", "line": 4}]}
+    r = analysis.postprocess(raw, segs, st, analysis._name_map({"0": "Ali"}), [], "tr")
+    assert [d["line"] for d in r["decisions"]] == [2, 4] and r["decisions"][0]["text"].startswith("Plan yapılması")

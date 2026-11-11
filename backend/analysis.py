@@ -417,7 +417,8 @@ def postprocess(raw: dict, segments: list[dict], st: dict, names: dict[str, int]
     """Repair what small models get wrong: bad line ids, names, scores, missing people, echoed instructions."""
     templates = _norm(" ".join((NOTES_PROMPT[lang], MERGE_PROMPT[lang], QUESTIONS_PROMPT[lang], SYSTEM[lang])))
 
-    known: set[str] = set()
+    # numbers that really occur in the recording (versions, amounts, years) and the length in minutes
+    known: set[str] = _numbers(" ".join(_text(sg) for sg in segments)) | {f"{st['duration'] / 60:.1f}"}
 
     def clean(v) -> str:
         v = str(v or "").strip()
@@ -430,7 +431,6 @@ def postprocess(raw: dict, segments: list[dict], st: dict, names: dict[str, int]
     valid = {d["id"] for d in st["speakers"]}
 
     pos = {sg["id"]: i for i, sg in enumerate(segments)}
-    known |= _numbers(" ".join(_text(sg) for sg in segments)) | {f"{st['duration'] / 60:.1f}"}
 
     def line(x, text=""):
         return _snap(x, text, segments, pos)
@@ -456,6 +456,11 @@ def postprocess(raw: dict, segments: list[dict], st: dict, names: dict[str, int]
     decisions = _dedupe([{"text": str(d.get("text", "")).strip(), "line": line(d.get("line"), str(d.get("text", "")))}
                          for d in rows("decisions")], "text")
     decisions = [d for d in decisions if d["line"] is not None and keep(d["text"])]
+    one: dict[int, dict] = {}  # two decisions on the same line are the same decision said twice
+    for d in decisions:
+        if d["line"] not in one or len(d["text"]) > len(one[d["line"]]["text"]):
+            one[d["line"]] = d
+    decisions = [d for d in decisions if one[d["line"]] is d]
     tasks = _dedupe([{"owner": _to_id(t.get("owner"), names, valid), "task": str(t.get("task", "")).strip(),
                       "due": str(t.get("due", "") or "").strip(),
                       "line": line(t.get("line"), str(t.get("task", "")))}
