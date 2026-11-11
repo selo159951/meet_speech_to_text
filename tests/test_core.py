@@ -313,3 +313,64 @@ def test_every_file_dialog_filter_is_valid_for_pywebview():
 
     for f in (*bridge.MEDIA_TYPES, *bridge.EXPORT_TYPES.values()):
         parse_file_type(f)  # raises ValueError for e.g. a "/" in the description
+
+
+def _make_video(path, seconds=2, fmt="mp4", vcodec="mpeg4", acodec="aac"):
+    """A tiny real video file: black frames plus a 440 Hz tone."""
+    import av
+    import numpy as np
+
+    with av.open(str(path), "w", format=fmt) as out:
+        v = out.add_stream(vcodec, rate=10)
+        v.width, v.height, v.pix_fmt = 64, 48, "yuv420p"
+        a = out.add_stream(acodec, rate=16000)
+        a.layout = "mono"
+        for i in range(seconds * 10):
+            f = av.VideoFrame.from_ndarray(np.zeros((48, 64, 3), np.uint8), format="rgb24")
+            f.pts = i
+            for p in v.encode(f.reformat(format="yuv420p")):
+                out.mux(p)
+        for p in v.encode(None):
+            out.mux(p)
+        t = np.arange(seconds * 16000) / 16000
+        pcm = (np.sin(2 * np.pi * 440 * t) * 12000).astype(np.int16).reshape(1, -1)
+        for k in range(0, pcm.shape[1], 1024):
+            fr = av.AudioFrame.from_ndarray(pcm[:, k:k + 1024], format="s16", layout="mono")
+            fr.sample_rate = 16000
+            fr.pts = k
+            for p in a.encode(fr):
+                out.mux(p)
+        for p in a.encode(None):
+            out.mux(p)
+
+
+@pytest.mark.parametrize("fmt,vcodec,acodec,name", [("mp4", "mpeg4", "aac", "a.mp4"), ("matroska", "mpeg4", "aac", "a.mkv")])
+def test_video_files_are_processed_by_their_audio_only(tmp_path, fmt, vcodec, acodec, name):
+    from backend import audio
+
+    src = tmp_path / name
+    _make_video(src, fmt=fmt, vcodec=vcodec, acodec=acodec)
+    mp3 = tmp_path / "play.mp3"
+    pcm, dur = audio.convert(src, mp3)
+    assert 1.8 < dur < 2.3 and pcm.dtype.name == "float32" and abs(pcm).max() > 0.1  # the tone, not silence
+    assert mp3.stat().st_size > 1000  # playback is the extracted audio
+
+
+def test_file_without_audio_track_gives_a_clear_error(tmp_path):
+    import av
+    import numpy as np
+    from backend import audio
+
+    src = tmp_path / "mute.mp4"
+    with av.open(str(src), "w", format="mp4") as out:
+        v = out.add_stream("mpeg4", rate=10)
+        v.width, v.height, v.pix_fmt = 64, 48, "yuv420p"
+        for i in range(5):
+            f = av.VideoFrame.from_ndarray(np.zeros((48, 64, 3), np.uint8), format="rgb24")
+            f.pts = i
+            for p in v.encode(f.reformat(format="yuv420p")):
+                out.mux(p)
+        for p in v.encode(None):
+            out.mux(p)
+    with pytest.raises(ValueError, match="no audio"):
+        audio.convert(src, None)
