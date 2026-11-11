@@ -304,3 +304,12 @@ def test_mark_interrupted_and_resume_guard():
     assert store.read_transcript(jid)["status"] == "interrupted"
     with pytest.raises(ValueError):  # no audio.mp3 saved yet -> cannot resume
         Api(window_getter=lambda: None).resume_job(jid)
+
+
+def test_every_file_dialog_filter_is_valid_for_pywebview():
+    from webview.util import parse_file_type
+
+    from backend import bridge
+
+    for f in (*bridge.MEDIA_TYPES, *bridge.EXPORT_TYPES.values()):
+        parse_file_type(f)  # raises ValueError for e.g. a "/" in the description

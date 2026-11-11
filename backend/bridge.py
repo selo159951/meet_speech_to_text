@@ -24,7 +24,7 @@ EXPORT_TYPES = {
     "json": "JSON (*.json)",
 }
 MEDIA_EXT = "*.mp3;*.wav;*.m4a;*.mp4;*.ogg;*.opus;*.flac;*.aac;*.webm;*.mkv;*.mov;*.wma;*.amr;*.3gp"
-MEDIA_TYPES = (f"Audio / video ({MEDIA_EXT})", "All files (*.*)")
+MEDIA_TYPES = (f"Audio and video ({MEDIA_EXT})", "All files (*.*)")
 
 
 def _first(result) -> str | None:
