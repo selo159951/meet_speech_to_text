@@ -246,3 +246,18 @@ h4.gtitle { font-size:13px; margin-top:14px; }
 .gfix { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:4px 10px; margin:4px 0; }
 .gfix .spacer { flex:1; } .gwrong { color:var(--muted); } .gright { font-weight:600; }
 .gadd { margin-top:8px; } .gadd input { width:160px; }
+
+/* ---- guided tour ---- */
+#tour { position:fixed; inset:0; z-index:9000; }
+#tour .tour-block { position:absolute; inset:0; }
+#tour.dim .tour-block { background:rgba(0,0,0,.55); }
+.tour-hole { position:fixed; border-radius:8px; border:2px solid var(--accent); box-shadow:0 0 0 9999px rgba(0,0,0,.55); pointer-events:none;
+  transition:left .25s ease, top .25s ease, width .25s ease, height .25s ease; }
+.tour-card { position:fixed; background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius:12px; padding:16px 18px;
+  box-shadow:0 10px 30px rgba(0,0,0,.35); transition:left .25s ease, top .25s ease; max-height:calc(100vh - 24px); overflow:auto; }
+.tour-card h3 { margin:2px 0 6px; font-size:16px; } .tour-card p { margin:0 0 14px; }
+.tour-count { font-size:12px; color:var(--muted); }
+.tour-btns { display:flex; align-items:center; gap:8px; } .tour-btns .spacer { flex:1; }
+.tour-skip { background:transparent; border-color:transparent; color:var(--muted); }
+.tour-card button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+@media (prefers-reduced-motion: reduce) { .tour-hole, .tour-card { transition:none; } }
