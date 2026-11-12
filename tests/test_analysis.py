@@ -276,7 +276,7 @@ def test_meeting_mode_setting_and_hook(monkeypatch):
     assert api.set_settings({"meeting_mode": True})["meeting_mode"] is True
     started = []
     monkeypatch.setattr(analysis, "start", lambda job_id: started.append(job_id))
-    monkeypatch.setattr("backend.diarize.refine_by_sentence", lambda s, w, spk, cb: spk)
+    monkeypatch.setattr("backend.diarize.refine_by_sentence", lambda s, w, spk, cb, margins=None: spk)
     monkeypatch.setattr("backend.people.apply_to_job", lambda *a, **k: {})
     monkeypatch.setattr(asr, "transcribe", lambda *a, **k: ([], "tr"))
     jid = make_job([])

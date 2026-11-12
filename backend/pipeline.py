@@ -146,9 +146,10 @@ def _transcribe_and_finish(job_id, jp, job, samples, duration, parts, device, pa
     turns = diar["turns"]
     t_ref = time.time()
     spk = assign_speakers(words, turns)
-    spk = diarize.refine_by_sentence(samples, words, spk, lambda p: dprog(0.85 + p * 0.15))
+    margins: list[float] = []
+    spk = diarize.refine_by_sentence(samples, words, spk, lambda p: dprog(0.85 + p * 0.15), margins)
     spk = diarize.merge_split_speakers(samples, words, spk)  # one person heard as two speakers
-    segments = build_segments(words, turns, speakers=spk)
+    segments = build_segments(words, turns, speakers=spk, margins=margins or None)
 
     n = len({s["speaker"] for s in segments}) or 1
     speakers = {str(i): f"Speaker {i + 1}" for i in range(n)}

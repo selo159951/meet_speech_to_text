@@ -58,24 +58,28 @@ def build_segments(
     max_gap: float = 1.5,
     max_len: float = 30.0,
     speakers: list[int] | None = None,
+    margins: list[float] | None = None,
 ) -> list[dict]:
-    """Group words into segments; split on speaker change, long pause or max length."""
+    """Group words into segments; split on speaker change, long pause or max length.
+    margins: per word, how sure the speaker decision was (see diarize.refine_by_sentence)."""
     if speakers is None:
         speakers = assign_speakers(words, turns)
     segments: list[dict] = []
     cur: dict | None = None
-    for w, spk in zip(words, speakers):
+    for n, (w, spk) in enumerate(zip(words, speakers)):
         if (
             cur is None
             or spk != cur["speaker"]
             or w.start - cur["end"] > max_gap
             or w.end - cur["start"] > max_len
         ):
-            cur = {"start": w.start, "end": w.end, "speaker": spk, "text": "", "words": []}
+            cur = {"start": w.start, "end": w.end, "speaker": spk, "text": "", "words": [], "margins": []}
             segments.append(cur)
         cur["text"] += w.text
         cur["end"] = w.end
         cur["words"].append([round(w.start, 2), round(w.end, 2), w.text, round(w.prob, 2)])
+        if margins is not None and n < len(margins) and margins[n] < 1.0:
+            cur["margins"].append(margins[n])
     out = []
     for i, s in enumerate(segments):
         text = s["text"].strip()
@@ -95,6 +99,8 @@ def build_segments(
                 # text confidence: time-weighted mean word probability, and how many words were doubtful
                 **({"conf": round(sum(d * p for d, p in probs) / tot, 3) if tot > 0 else 1.0,
                     "low_words": sum(1 for _, p in probs if p < 0.4)} if probs else {}),
+                # speaker confidence: the smallest margin in the line (small or negative = another voice was as close)
+                **({"spk_conf": round(min(s["margins"]), 3)} if s["margins"] else {}),
             }
         )
     for i, s in enumerate(out):

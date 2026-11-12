@@ -224,6 +224,9 @@ def replace_transcript(job_id: str, segments: list[dict], speakers: dict) -> dic
             "speaker": int(s["speaker"]), "text_edited": str(s["text_edited"]),
             "text_original": prev.get("text_original", s.get("text_original", "")),
             "words": prev.get("words", s.get("words", [])),
+            # confidence marks of the model's own lines (a line the user gave to another speaker is no longer in doubt)
+            **{k: prev[k] for k in ("conf", "low_words") if k in prev},
+            **({"spk_conf": prev["spk_conf"]} if "spk_conf" in prev and int(s["speaker"]) == prev.get("speaker") else {}),
         })
     data["segments"] = sorted(out, key=lambda s: (s["start"], s["id"]))
     data["speakers"] = {str(k): str(v) for k, v in speakers.items()}

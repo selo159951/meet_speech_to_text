@@ -132,7 +132,8 @@ CLOSING = ("thank you", "thanks", "teşekkür", "sağ ol", "okay", "tamam", "gre
 
 
 def refine_by_sentence(samples: np.ndarray, words, speakers: list[int],
-                       progress: Callable[[float], None] = lambda p: None) -> list[int]:
+                       progress: Callable[[float], None] = lambda p: None,
+                       margins: list[float] | None = None) -> list[int]:
     """Second pass. Every sentence gets a voice print; the speaker of each sentence is then decoded for
     the whole meeting at once (Viterbi): a sentence follows the voice it sounds most like, a change of
     speaker has a price, so one short "Thank you." cannot flip back and forth on its own noise but a
@@ -172,8 +173,13 @@ def refine_by_sentence(samples: np.ndarray, words, speakers: list[int],
     em, spk = _emissions(E, labels, dur)
     path = decode_sentences(em, gaps, closure)
     out = list(speakers)
-    for (i, j), c in zip(sents, path):
+    if margins is not None:  # how much closer the chosen voice is than the next best one, per word (1.0 = no doubt)
+        margins[:] = [1.0] * len(words)
+    for k, ((i, j), c) in enumerate(zip(sents, path)):
         out[i:j] = [spk[c]] * (j - i)
+        if margins is not None and len(spk) > 1:
+            others = np.delete(em[k], c)
+            margins[i:j] = [float(em[k, c] - others.max())] * (j - i)
     progress(1.0)
     return out
 

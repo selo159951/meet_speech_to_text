@@ -529,3 +529,19 @@ def test_split_speaker_is_merged_but_different_people_are_not(monkeypatch):
     out = diarize.merge_split_speakers(samples, words, spk, threshold=0.72)
     # 0 and 2 are 0.97 alike and each other's best match: one person; 1 is only 0.5 alike
     assert sorted(set(out)) == [0, 1] and out[:10] == out[20:30] and out[10:20] != out[:10]
+
+
+def test_segments_carry_speaker_confidence_and_it_survives_a_save(monkeypatch, tmp_path):
+    from backend import store
+    from backend.merge import Turn, Word, build_segments
+
+    words = [Word(0, 1, " a", 0.9), Word(1, 2, " b", 0.9), Word(2.1, 3, " c", 0.9)]
+    segs = build_segments(words, [Turn(0, 3, 0)], margins=[0.3, 0.02, 1.0])
+    assert segs[0]["spk_conf"] == 0.02
+    jid = store.create_job("x.mp3")
+    store.update_job(jid, status="done", segments=segs, speakers={"0": "Speaker 1", "1": "Speaker 2"})
+    sent = [{"id": s["id"], "start": s["start"], "end": s["end"], "speaker": s["speaker"], "text_edited": "edited"} for s in segs]
+    kept = store.replace_transcript(jid, sent, {"0": "A", "1": "B"})["segments"][0]
+    assert kept["spk_conf"] == 0.02 and kept["conf"] > 0.8 and kept["text_original"] == segs[0]["text_original"]
+    sent[0]["speaker"] = 1  # the user decided who it is
+    assert "spk_conf" not in store.replace_transcript(jid, sent, {"0": "A", "1": "B"})["segments"][0]
