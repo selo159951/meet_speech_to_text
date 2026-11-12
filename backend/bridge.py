@@ -133,7 +133,9 @@ class Api(SystemApi, LlmApi):
     # ---------------- settings ----------------
     def get_settings(self) -> dict:
         return {**asr.status(), "meeting_mode": bool(asr.get_settings().get("meeting_mode", False)), "language": asr.language_mode(),
-                "learn_people": bool(asr.get_settings().get("learn_people", True))}
+                "learn_people": bool(asr.get_settings().get("learn_people", True)),
+                "tour_home_done": bool(asr.get_settings().get("tour_home_done", False)),
+                "tour_job_done": bool(asr.get_settings().get("tour_job_done", False))}
 
     def set_settings(self, values: dict) -> dict:
         if "use_gpu" in values:
@@ -144,6 +146,9 @@ class Api(SystemApi, LlmApi):
             asr.set_setting("meeting_mode", bool(values["meeting_mode"]))
         if "learn_people" in values:
             asr.set_setting("learn_people", bool(values["learn_people"]))
+        for key in ("tour_home_done", "tour_job_done"):
+            if key in values:
+                asr.set_setting(key, bool(values[key]))
         if values.get("language") in asr.LANGUAGES:
             asr.set_setting("language", values["language"])
         return self.get_settings()
