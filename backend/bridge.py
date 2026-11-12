@@ -322,6 +322,27 @@ class Api(SystemApi, LlmApi):
         _job(job_id)
         return people.add_sample_from_job(job_id, int(speaker), person_id or None, name)
 
+    # ---- glossary (names and terms the speech model spells wrong)
+    def get_glossary(self) -> dict:
+        from . import glossary
+
+        return glossary.get()
+
+    def set_glossary_terms(self, terms: list) -> dict:
+        from . import glossary
+
+        return glossary.set_terms([str(t) for t in terms])
+
+    def add_glossary_fix(self, wrong: str, right: str) -> dict:
+        from . import glossary
+
+        return glossary.add_fix(str(wrong), str(right), manual=True)
+
+    def remove_glossary_fix(self, wrong: str) -> dict:
+        from . import glossary
+
+        return glossary.remove_fix(str(wrong))
+
     def confirm_person(self, person_id: str) -> dict:
         from . import people
 

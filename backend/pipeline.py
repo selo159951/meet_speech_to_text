@@ -133,6 +133,13 @@ def _transcribe_and_finish(job_id, jp, job, samples, duration, parts, device, pa
         status["progress"] = b / duration
         push(part=i + 1)
     asr_secs = time.time() - t_asr
+    try:  # the user's glossary: names and terms the model spells wrong
+        from . import glossary
+
+        words, gloss_changes = glossary.apply(words)
+    except Exception:
+        traceback.print_exc()
+        gloss_changes = []
     language = langs.most_common(1)[0][0] if langs else None
 
     status["stage"] = "diarizing"
@@ -171,7 +178,7 @@ def _transcribe_and_finish(job_id, jp, job, samples, duration, parts, device, pa
     benchmarks.record(timings, resumed=resume)  # feeds the ETA estimates
     store.update_job(
         job_id, status="done", stage="done", progress=1.0, dprogress=1.0, segments=segments,
-        mixed=asr.language_mode() == "mixed",
+        mixed=asr.language_mode() == "mixed", glossary_changes=gloss_changes,
         speakers=speakers, timings=timings, **voices,
         # frozen copy of the model output for the "Original" export
         original_segments=[{k: s[k] for k in ("start", "end", "speaker", "text_original")} for s in segments],

@@ -234,6 +234,18 @@ def replace_transcript(job_id: str, segments: list[dict], speakers: dict) -> dic
     return data
 
 
+def _learn(seg: dict, new_text: str) -> None:
+    """A corrected spelling in the model's line is remembered (glossary) so the next recording gets it right."""
+    try:
+        orig = seg.get("text_original") or ""
+        if orig and new_text != seg.get("text_edited") and new_text != orig:
+            from . import glossary
+
+            glossary.learn(orig, new_text)
+    except Exception:
+        pass  # learning is a bonus, saving the edit must never fail
+
+
 def save_edits(job_id: str, edits: dict[int, str] | None = None, speakers: dict | None = None,
                segment_speakers: dict[int, int] | None = None) -> dict:
     """Edits only touch text_edited / speaker labels; text_original is never modified."""
@@ -241,6 +253,7 @@ def save_edits(job_id: str, edits: dict[int, str] | None = None, speakers: dict 
     by_id = {s["id"]: s for s in data["segments"]}
     for sid, text in (edits or {}).items():
         if sid in by_id:
+            _learn(by_id[sid], text)
             by_id[sid]["text_edited"] = text
     for sid, spk in (segment_speakers or {}).items():
         if sid in by_id:

@@ -276,6 +276,11 @@ class WhisperCppEngine:
             cmd = [str(exe), "-m", str(self.model_path), "-f", str(wav), "-l", mode if mode not in ("auto", "mixed") else "auto",
                    "-ojf", "-of", str(out_base), "-t", str(threads), "--print-progress",
                    "-mc", "0"]  # no previous-text conditioning (avoids repetition loops)
+            from .. import glossary
+
+            hot = glossary.hotwords()
+            if hot:
+                cmd += ["--prompt", hot]  # the names the user cares about, written as the model should spell them
             cmd += self.extra_args
             if self.device == "cpu":
                 cmd.append("-ng")

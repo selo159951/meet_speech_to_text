@@ -125,8 +125,10 @@ class CT2Engine:
         return sorted(((l, v / used) for l, v in total.items()), key=lambda t: -t[1])[:3]
 
     def _decode(self, audio: np.ndarray, language: str | None, offset: float = 0.0) -> tuple[list[Word], str]:
+        from .. import glossary
+
         segs, info = self._model.transcribe(audio, language=language, word_timestamps=True, vad_filter=True,
-                                            condition_on_previous_text=False)
+                                            condition_on_previous_text=False, hotwords=glossary.hotwords())
         words = [Word(w.start + offset, w.end + offset, w.word, float(w.probability))
                  for seg in segs for w in (seg.words or [])]
         return words, info.language
@@ -142,8 +144,11 @@ class CT2Engine:
             return self._transcribe_mixed(samples, duration, progress, voted)
         # a fixed language, or the language of the recording as a whole: the speech is written, never translated
         language = mode if mode not in ("auto", "mixed") else main
+        from .. import glossary
+
         segs, info = self._model.transcribe(
             samples, language=language, word_timestamps=True, vad_filter=True, condition_on_previous_text=False,
+            hotwords=glossary.hotwords(),
         )
         words: list[Word] = []
         for seg in segs:
