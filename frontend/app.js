@@ -272,6 +272,15 @@ function renderSpeakers() {
     const shown = names.slice(0, 6).join(", ") + (names.length > 6 ? ", ..." : "");
     box.append(el("p", { className: "hint learnedline", textContent: t(names.length === 1 ? "learned_1" : "learned_n", { n: names.length, s: shown }) }));
   }
+  const gseen = new Set(), gpairs = [];
+  for (const g of job.glossary_changes || []) {
+    const k = g.from + "\u0000" + g.to;
+    if (!gseen.has(k)) { gseen.add(k); gpairs.push(g.from + " > " + g.to); }
+  }
+  if (gpairs.length) {
+    const shown = gpairs.slice(0, 6).join(", ") + (gpairs.length > 6 ? ", ..." : "");
+    box.append(el("p", { className: "hint learnedline", textContent: t("glossary_applied", { s: shown }) }));
+  }
   const f = $("fSpk"), cur = f.value;
   f.replaceChildren(new Option(t("all_speakers"), ""));
   for (const i of spkIds()) f.add(new Option(spkLabel(i), i));

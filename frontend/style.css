@@ -239,3 +239,10 @@ kbd .ic { width:12px; height:12px; vertical-align:-.1em; }
 .reviewbar { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin:0 0 8px; font-size:13px; color:var(--muted); }
 .reviewbar .rvt { font-weight:600; color:var(--fg); } .reviewbar button.active { border-color:var(--accent); background:var(--card); }
 .lcdot { display:inline-block; width:12px; height:12px; border-radius:3px; } .lc-mid-dot { background:rgba(245,158,11,.55); } .lc-low-dot { background:rgba(220,38,38,.5); }
+
+.gtitle { margin:18px 0 6px; font-size:15px; }
+h4.gtitle { font-size:13px; margin-top:14px; }
+.gterms { width:100%; box-sizing:border-box; resize:vertical; font:inherit; font-size:13px; margin-bottom:6px; }
+.gfix { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:4px 10px; margin:4px 0; }
+.gfix .spacer { flex:1; } .gwrong { color:var(--muted); } .gright { font-weight:600; }
+.gadd { margin-top:8px; } .gadd input { width:160px; }

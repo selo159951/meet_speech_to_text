@@ -6,11 +6,12 @@
     tr: "Sabah erkenden kalkıp pencereyi açtım. Dışarıda hafif bir yağmur yağıyordu ve havada toprak kokusu vardı. Çayımı demledikten sonra bugün yapılacak işleri bir kâğıda yazdım: önce toplantı notlarını düzenleyecek, öğleden sonra ise müşterilere göndereceğim raporu hazırlayacaktım. Telefonum çaldığında arkadaşım, akşam için yeni açılan lokantada yer ayırttığını söyledi. Güldüm, çünkü geçen hafta da aynı şeyi planlamıştık, ama sonunda hepimiz yağmurdan dolayı evde kalmıştık. Yine de gitmeye karar verdim. Şehrin kalabalığında yürümeyi, vitrinlere bakmayı ve eski dostlarla uzun uzun sohbet etmeyi çok severim. Belki yarın hafta sonu için küçük bir gezi de düzenleriz; deniz kenarında yürüyüş, sıcak simit ve güzel bir manzara gayet iyi olur.",
     en: "I woke up early this morning and opened the window. A light rain was falling, and the air smelled of fresh earth. After brewing a pot of tea, I wrote down everything I needed to do today: first, organize the notes from yesterday's meeting, and in the afternoon, prepare the report for our clients. When my phone rang, a friend told me she had booked a table at the new restaurant downtown. I laughed, because we had planned the very same thing last week, but the storm kept all of us at home. Still, I decided to go. I enjoy walking through the busy streets, looking at shop windows, and talking for hours with old friends. Maybe tomorrow we will even organize a small trip for the weekend: a walk by the sea, warm bread, and a beautiful view would be just perfect.",
   };
-  const S = { list: [], textLang: null, adding: false, rec: null, error: "" };
+  const S = { list: [], textLang: null, adding: false, rec: null, error: "", gloss: null };
   const msg = (e) => (e && e.message) || String(e);
 
   async function refresh(render = true) {
     try { S.list = await call("list_people"); } catch (e) { S.error = msg(e); }
+    if (hasGlossary()) { try { S.gloss = await call("get_glossary"); } catch (e) { S.error = msg(e); } }
     if (render && !root.hidden) draw();
   }
 
@@ -73,7 +74,53 @@
         ...(confirmAll ? [confirmAll] : []), addPanel()),
       el("p", { className: "hint", textContent: t("people_hint") }),
       ...(S.error ? [el("p", { className: "perr", textContent: S.error })] : []),
-      ...(cards.length ? cards : [el("p", { className: "hint", textContent: t("no_people") })]));
+      ...(cards.length ? cards : [el("p", { className: "hint", textContent: t("no_people") })]),
+      ...glossarySection());
+  }
+
+  /* ---------- glossary ---------- */
+  const hasGlossary = () => !!(window.pywebview && window.pywebview.api && window.pywebview.api.get_glossary);
+  async function gloss(fn, ...args) {
+    S.error = "";
+    try { S.gloss = await call(fn, ...args); return true; } catch (e) { S.error = msg(e); return false; }
+  }
+  function glossarySection() {
+    if (!hasGlossary() || !S.gloss) return [];
+    const terms = el("textarea", { className: "gterms", rows: 5, placeholder: t("glossary_ph"), value: (S.gloss.terms || []).join("\n") });
+    const saved = el("span", { className: "pmeta" });
+    const saveBtn = el("button", { textContent: t("save_btn_g") });
+    saveBtn.onclick = async () => {
+      const lines = terms.value.split("\n").map((x) => x.trim()).filter(Boolean);
+      if (await gloss("set_glossary_terms", lines)) {
+        saved.textContent = t("saved_g");
+        setTimeout(() => { saved.textContent = ""; }, 2000);
+        terms.value = (S.gloss.terms || []).join("\n");
+      } else draw();
+    };
+    const fixes = (S.gloss.fixes || []).map((f) => {
+      const rm = el("button", { className: "icon", title: t("fix_remove") }, ic("trash"));
+      rm.onclick = async () => { await gloss("remove_glossary_fix", f.wrong); draw(); };
+      return el("div", { className: "prow gfix" },
+        el("span", { className: "gwrong", textContent: f.wrong }), ic("arrow-right"),
+        el("span", { className: "gright", textContent: f.right }),
+        el("span", { className: "ptag", textContent: f.manual ? t("fix_manual") : t("fix_count", { n: f.count }) }),
+        el("span", { className: "spacer" }), rm);
+    });
+    const wrong = el("input", { placeholder: t("fix_wrong_ph") });
+    const right = el("input", { placeholder: t("fix_right_ph") });
+    const add = el("button", { textContent: t("fix_add") });
+    add.onclick = async () => {
+      if (!wrong.value.trim() || !right.value.trim()) { (wrong.value.trim() ? right : wrong).focus(); return; }
+      await gloss("add_glossary_fix", wrong.value.trim(), right.value.trim()); draw();
+    };
+    return [
+      el("h3", { className: "gtitle", textContent: t("glossary_title") }),
+      el("p", { className: "hint", textContent: t("glossary_hint") }),
+      terms, el("div", { className: "prow" }, saveBtn, saved),
+      el("h4", { className: "gtitle", textContent: t("learned_fixes") }),
+      ...(fixes.length ? fixes : [el("p", { className: "hint", textContent: t("no_fixes") })]),
+      el("div", { className: "prow gadd" }, wrong, ic("arrow-right"), right, add),
+    ];
   }
 
   function addPanel() {
