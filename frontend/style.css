@@ -84,6 +84,8 @@ button.icon { min-width:34px; padding:5px 8px; text-align:center; }
 #qCount { font-size:12px; color:var(--muted); min-width:34px; text-align:center; }
 .chk { font-size:13px; display:inline-flex; gap:4px; align-items:center; cursor:pointer; }
 ::highlight(search) { background-color:var(--hit); }
+::highlight(lc-mid) { background-color:rgba(245,158,11,.38); }
+::highlight(lc-low) { background-color:rgba(220,38,38,.34); }
 ::highlight(search-cur) { background-color:var(--hitcur); color:#000; }
 
 /* lines */
@@ -231,3 +233,9 @@ kbd .ic { width:12px; height:12px; vertical-align:-.1em; }
 .verdict .ic { width:1.1em; height:1.1em; vertical-align:-.15em; }
 
 .langmode { display:block; margin-top:10px; font-size:13px; color:var(--muted); } .langmode select { margin-left:6px; }
+
+/* lines to check */
+.seg.rv-mid { box-shadow:inset 3px 0 0 #f59e0b; } .seg.rv-low { box-shadow:inset 3px 0 0 #dc2626; }
+.reviewbar { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin:0 0 8px; font-size:13px; color:var(--muted); }
+.reviewbar .rvt { font-weight:600; color:var(--fg); } .reviewbar button.active { border-color:var(--accent); background:var(--card); }
+.lcdot { display:inline-block; width:12px; height:12px; border-radius:3px; } .lc-mid-dot { background:rgba(245,158,11,.55); } .lc-low-dot { background:rgba(220,38,38,.5); }

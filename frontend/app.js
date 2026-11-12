@@ -288,6 +288,69 @@ async function detectNames() {
 }
 
 /* ================= lines ================= */
+/* ---- lines to check: the speech model's word confidence and how sure the speaker decision was ---- */
+const RV = { shortLow: 0.2, wordLow: 0.4, wordMid: 0.7, lineLow: 0.5, lineMid: 0.75, spkLow: 0.0, spkMid: 0.05 };
+let reviewOnly = false;
+const segOf = (row) => job.segments.find((x) => "seg" + x.id === row.id);
+/* -> { level: 0 none | 1 medium (yellow) | 2 low (red), reasons: [..] }; a line the user edited is no longer in doubt */
+function reviewOf(s) {
+  const reasons = [];
+  let level = 0;
+  const edited = s.text_original && s.text_edited !== s.text_original;
+  if (!edited && typeof s.conf === "number") {
+    const lw = s.low_words || 0;
+    if (s.conf < RV.lineLow || lw >= 3) { level = 2; reasons.push(t("rv_text")); }
+    else if (s.conf < RV.lineMid || lw >= 1) { level = Math.max(level, 1); reasons.push(t("rv_text")); }
+  }
+  if (typeof s.spk_conf === "number") {
+    if (s.spk_conf < RV.spkLow) { level = 2; reasons.push(t("rv_spk")); }
+    else if (s.spk_conf < RV.spkMid) { level = Math.max(level, 1); reasons.push(t("rv_spk")); }
+  }
+  return { level, reasons };
+}
+function paintConfidence() {  // word level: coloured ranges inside the unedited text (the CSS highlight API leaves the text itself alone)
+  if (!hl) return;
+  const low = [], mid = [];
+  for (const row of $("segs").children) {
+    const s = segOf(row);
+    if (!s || !s.words?.length || s.text_edited !== s.text_original) continue;
+    const node = row.querySelector(".txt")?.firstChild;
+    if (!node || node.nodeType !== 3 || node.textContent !== s.text_original) continue;
+    const raw = s.words.map((w) => w[2]).join(""), lead = raw.length - raw.trimStart().length;
+    let pos = 0;
+    for (const w of s.words) {
+      const tx = w[2], p = w[3];
+      const short = tx.trim().length <= 3;  // "a", "and", "we": the model is often unsure about them and it hardly matters
+      const lowT = short ? RV.shortLow : RV.wordLow, midT = short ? RV.shortLow : RV.wordMid;
+      if (typeof p === "number" && p < midT) {
+        const a = pos - lead + (tx.length - tx.trimStart().length), b = pos - lead + tx.length;
+        if (a >= 0 && b <= node.length && b > a) {
+          const r = new Range(); r.setStart(node, a); r.setEnd(node, b);
+          (p < lowT ? low : mid).push(r);
+        }
+      }
+      pos += tx.length;
+    }
+  }
+  CSS.highlights.set("lc-low", new Highlight(...low));
+  CSS.highlights.set("lc-mid", new Highlight(...mid));
+}
+function refreshReview() {
+  let n = 0;
+  for (const row of $("segs").children) {
+    const s = segOf(row); if (!s) continue;
+    const r = reviewOf(s);
+    row.classList.toggle("rv-low", r.level === 2); row.classList.toggle("rv-mid", r.level === 1);
+    row.querySelector(".chip").title = r.reasons.length ? t("play_part") + " - " + r.reasons.join(" / ") : t("play_part");
+    if (r.level) n++;
+  }
+  $("reviewBar").hidden = n === 0 && !reviewOnly;
+  $("reviewOnly").textContent = t("rv_only_n", { n });
+  $("reviewOnly").classList.toggle("active", reviewOnly);
+  paintConfidence();
+}
+$("reviewOnly").onclick = () => { reviewOnly = !reviewOnly; applyFilters(); refreshReview(); };
+
 function renderSegs() {
   const box = $("segs"); box.replaceChildren();
   for (const s of job.segments) {
@@ -296,7 +359,7 @@ function renderSegs() {
     chip.onclick = () => playRange(s.start, s.end);
     const sel = el("select", { className: spkClass(s.speaker) });
     for (const i of spkIds()) sel.add(new Option(spkLabel(i), i, false, i === s.speaker));
-    sel.onchange = async () => { await checkpoint(); s.speaker = +sel.value; commit(t("line_given", { s: spkLabel(s.speaker) })); };
+    sel.onchange = async () => { await checkpoint(); s.speaker = +sel.value; delete s.spk_conf; commit(t("line_given", { s: spkLabel(s.speaker) })); };
     const txt = el("div", { className: "txt", contentEditable: "true", spellcheck: true, textContent: s.text_edited });
     txt.dataset.placeholder = t("type_here");
     const isNew = !s.text_original;
@@ -305,9 +368,9 @@ function renderSegs() {
       const ch = !isNew && s.text_edited !== s.text_original;
       row.classList.toggle("edited", ch); row.classList.toggle("added", isNew); rev.hidden = !ch;
     };
-    txt.oninput = () => { s.text_edited = txt.innerText.replace(/\n+/g, " ").trim(); (dirty.texts ??= {})[s.id] = s.text_edited; mark(); scheduleSave(); refreshSearch(false); };
+    txt.oninput = () => { s.text_edited = txt.innerText.replace(/\n+/g, " ").trim(); (dirty.texts ??= {})[s.id] = s.text_edited; mark(); scheduleSave(); refreshSearch(false); refreshReview(); };
     txt.onkeydown = (e) => { if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); playRange(s.start, s.end); } };
-    rev.onclick = () => { s.text_edited = s.text_original; txt.textContent = s.text_original; (dirty.texts ??= {})[s.id] = s.text_edited; mark(); scheduleSave(); };
+    rev.onclick = () => { s.text_edited = s.text_original; txt.textContent = s.text_original; (dirty.texts ??= {})[s.id] = s.text_edited; mark(); scheduleSave(); refreshReview(); };
     const act = el("div", { className: "actions" }, rev,
       btn("plus", t("add_line"), () => addLine(s)),
       btn("merge-up", t("merge_up"), () => mergeUp(s)),
@@ -316,6 +379,7 @@ function renderSegs() {
     row.append(chip, sel, txt, act); box.append(row);
   }
   refreshSearch(false); // re-apply filters and search highlights on the new nodes
+  refreshReview();
 }
 const btn = (icon, title, fn) => { const b = el("button", { className: "small icon", title }, ic(icon)); b.onclick = fn; return b; };
 
@@ -404,7 +468,8 @@ function applyFilters() {
     const s = job.segments.find((x) => "seg" + x.id === row.id);
     const hide = (spk !== "" && s.speaker !== +spk) ||
       (edOnly && !(row.classList.contains("edited") || row.classList.contains("added"))) ||
-      (mOnly && !fold(s.text_edited).includes(q));
+      (mOnly && !fold(s.text_edited).includes(q)) ||
+      (reviewOnly && !(row.classList.contains("rv-low") || row.classList.contains("rv-mid")));
     row.hidden = hide; if (!hide) shown++;
   }
   $("empty").hidden = shown > 0;
