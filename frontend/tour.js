@@ -201,7 +201,7 @@
 
   /* needChange: the model wizard may be showing, so wait until #home has been hidden and then shown again */
   function watchHome(needChange) {
-    let seenHidden = false;
+    let seenHidden = home().hidden;  // the wizard may already have opened the System page before we got here
     const go = () => setTimeout(() => { if (!cur && !home().hidden) start("home"); }, 450);
     const ob = new MutationObserver(() => {
       if (home().hidden) { seenHidden = true; return; }
