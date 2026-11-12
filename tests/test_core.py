@@ -376,9 +376,28 @@ def test_file_without_audio_track_gives_a_clear_error(tmp_path):
         audio.convert(src, None)
 
 
-def test_language_mode_setting_and_ct2_arguments(monkeypatch):
-    import types
+class _FakeWhisper:
+    """faster-whisper stand-in: the word probability depends on the language the audio is decoded in."""
 
+    def __init__(self, good="en", probs=None):
+        import types
+
+        self.good, self.calls, self.types = good, [], types
+        self.probs = probs or [("en", 0.9), ("tr", 0.1)]
+
+    def detect_language(self, audio, vad_filter=False, **kw):
+        return self.probs[0][0], self.probs[0][1], self.probs
+
+    def transcribe(self, audio, language=None, **kw):
+        self.calls.append(language)
+        T = self.types.SimpleNamespace
+        p = 0.95 if language == self.good else 0.3
+        words = [T(start=0.1, end=0.6, word=" hello", probability=p), T(start=0.7, end=1.2, word=" there", probability=p)]
+        return iter([T(words=words, end=1.2)]), T(language=language or "en")
+
+
+def test_language_mode_setting_and_ct2_arguments(monkeypatch):
+    import numpy as np
     from backend import asr, bridge
     from backend.engines.ct2 import CT2Engine
 
@@ -386,24 +405,47 @@ def test_language_mode_setting_and_ct2_arguments(monkeypatch):
     api = bridge.Api()
     assert api.set_settings({"language": "klingon"})["language"] == "auto"  # unknown values are ignored
     assert api.set_settings({"language": "mixed"})["language"] == "mixed"
+    eng = CT2Engine("cpu", "int8")
+    eng._model = _FakeWhisper()
+    x = np.ones(16000 * 3, "float32") * 0.05
+    # the language of the WHOLE recording is voted once; auto then writes everything in it (never translating)
+    assert eng.vote_languages(x)[0][0] == "en"
+    asr.set_setting("language", "auto")
+    monkeypatch.setattr(asr, "_langs", [("en", 0.9), ("tr", 0.1)])
+    words, lang = eng.transcribe(x, 3.0, lambda p: None)
+    assert eng._model.calls == ["en"] and lang == "en" and words[0].prob == 0.95  # probabilities are kept
+    asr.set_setting("language", "tr")
+    eng.transcribe(x, 3.0, lambda p: None)
+    assert eng._model.calls[-1] == "tr"
 
-    seen = {}
 
-    class FakeModel:
-        def transcribe(self, samples, **kw):
-            seen.update(kw)
-            return iter([]), types.SimpleNamespace(language="tr")
+def test_mixed_mode_only_tries_languages_in_the_recording_and_keeps_the_surer_one(monkeypatch):
+    import numpy as np
+    from backend import asr, chunking
+    from backend.engines.ct2 import CT2Engine
 
     eng = CT2Engine("cpu", "int8")
-    eng._model = FakeModel()
-    eng.transcribe(__import__("numpy").zeros(16000, "float32"), 1.0, lambda p: None)
-    assert seen["language"] is None and seen["multilingual"] is True
-    asr.set_setting("language", "en")
-    eng.transcribe(__import__("numpy").zeros(16000, "float32"), 1.0, lambda p: None)
-    assert seen["language"] == "en" and seen["multilingual"] is False
-    asr.set_setting("language", "auto")
-    eng.transcribe(__import__("numpy").zeros(16000, "float32"), 1.0, lambda p: None)
-    assert seen["language"] is None and seen["multilingual"] is False
+    eng._model = _FakeWhisper(good="tr")  # this window really is Turkish
+    x = np.ones(16000 * 40, "float32") * 0.05
+    monkeypatch.setattr(chunking, "speech_regions", lambda s: [(0.0, 10.0), (12.0, 20.0), (30.0, 38.0)])
+    asr.set_setting("language", "mixed")
+    monkeypatch.setattr(asr, "_langs", [("en", 0.6), ("tr", 0.35), ("de", 0.05)])
+    words, lang = eng.transcribe(x, 40.0, lambda p: None)
+    assert set(eng._model.calls) == {"en", "tr"} and "de" not in eng._model.calls  # German is not in the recording
+    assert words and all(w.prob == 0.95 for w in words) and lang == "tr"
+    # a recording with one language never runs the two-language path
+    eng._model.calls.clear()
+    monkeypatch.setattr(asr, "_langs", [("en", 0.97), ("tr", 0.03)])
+    eng.transcribe(x, 40.0, lambda p: None)
+    assert eng._model.calls == ["en"]
+
+
+def test_segments_carry_text_confidence():
+    from backend.merge import Turn, Word, build_segments
+
+    words = [Word(0, 1, " sure", 0.95), Word(1, 2, " doubtful", 0.2), Word(2, 3, " fine", 0.9)]
+    s = build_segments(words, [Turn(0, 3, 0)])[0]
+    assert s["low_words"] == 1 and 0.6 < s["conf"] < 0.7 and s["words"][1] == [1, 2, " doubtful", 0.2]
 
 
 # ---------- many speakers and names ----------

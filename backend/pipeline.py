@@ -112,6 +112,8 @@ def _transcribe_and_finish(job_id, jp, job, samples, duration, parts, device, pa
     langs: Counter = Counter()
     last_t = [0.0]
     t_asr = time.time()
+    if not (resume and (part_dir / "0.json").exists()) or True:
+        asr.detect_languages(samples)  # which language(s) the whole recording is in (one cheap pass)
     for i, (a, b) in enumerate(parts):
         f = part_dir / f"{i}.json"
         if resume and f.exists():  # already done before the app was closed
@@ -124,9 +126,9 @@ def _transcribe_and_finish(job_id, jp, job, samples, duration, parts, device, pa
                     push(part=i + 1)
 
             ws, lang = asr.transcribe(samples[int(a * SR):int(b * SR)], b - a, tprog)
-            saved = {"lang": lang, "words": [[round(w.start + a, 3), round(w.end + a, 3), w.text] for w in ws]}
+            saved = {"lang": lang, "words": [[round(w.start + a, 3), round(w.end + a, 3), w.text, round(w.prob, 3)] for w in ws]}
             f.write_text(json.dumps(saved, ensure_ascii=False), "utf-8")
-        words += [Word(s, e, t) for s, e, t in saved["words"]]
+        words += [Word(w[0], w[1], w[2], w[3] if len(w) > 3 else 1.0) for w in saved["words"]]
         langs[saved["lang"]] += b - a
         status["progress"] = b / duration
         push(part=i + 1)

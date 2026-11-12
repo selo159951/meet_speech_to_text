@@ -89,6 +89,30 @@ def load_model(progress: Callable[[float], None] | None = None):
     return _engine
 
 
+_langs: list[tuple[str, float]] = []
+
+
+def recording_languages() -> list[tuple[str, float]]:
+    return list(_langs)
+
+
+def detect_languages(samples: np.ndarray) -> list[tuple[str, float]]:
+    """Vote the language(s) of the whole recording once, before the parts are written. Never fails a job."""
+    global _langs
+    _langs = []
+    if language_mode() not in ("auto", "mixed"):
+        return []
+    try:
+        eng = load_model()
+        if hasattr(eng, "vote_languages"):
+            _langs = eng.vote_languages(samples)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+    return list(_langs)
+
+
 def release() -> None:
     """Drop the loaded speech model so its video memory is free for the analysis model.
     A transcription that is still running keeps its own reference; the next one reloads (a few seconds)."""

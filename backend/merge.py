@@ -9,6 +9,7 @@ class Word:
     start: float
     end: float
     text: str
+    prob: float = 1.0  # how sure the speech model was about this word (0-1)
 
 
 @dataclass
@@ -74,12 +75,14 @@ def build_segments(
             segments.append(cur)
         cur["text"] += w.text
         cur["end"] = w.end
-        cur["words"].append([round(w.start, 2), round(w.end, 2), w.text])
+        cur["words"].append([round(w.start, 2), round(w.end, 2), w.text, round(w.prob, 2)])
     out = []
     for i, s in enumerate(segments):
         text = s["text"].strip()
         if not text:
             continue
+        probs = [(w[1] - w[0], w[3]) for w in s["words"] if len(w) > 3]
+        tot = sum(d for d, _ in probs)
         out.append(
             {
                 "id": i,
@@ -88,7 +91,10 @@ def build_segments(
                 "speaker": s["speaker"],
                 "text_original": text,
                 "text_edited": text,
-                "words": s["words"],  # [start, end, text] - used to time a split precisely
+                "words": s["words"],  # [start, end, text, probability] - used to time a split precisely
+                # text confidence: time-weighted mean word probability, and how many words were doubtful
+                **({"conf": round(sum(d * p for d, p in probs) / tot, 3) if tot > 0 else 1.0,
+                    "low_words": sum(1 for _, p in probs if p < 0.4)} if probs else {}),
             }
         )
     for i, s in enumerate(out):
@@ -116,7 +122,8 @@ def _word_spans(seg: dict) -> list[tuple[int, int, float, float]] | None:
     raw = "".join(w[2] for w in words)
     lead = len(raw) - len(raw.lstrip())
     spans, pos = [], 0
-    for ws, we, wt in words:
+    for w in words:
+        ws, we, wt = w[0], w[1], w[2]
         spans.append((pos - lead, pos - lead + len(wt), ws, we))
         pos += len(wt)
     return spans

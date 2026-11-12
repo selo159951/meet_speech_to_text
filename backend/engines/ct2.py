@@ -101,20 +101,85 @@ class CT2Engine:
                     self.device, self.compute = "cpu", "int8"
             self._model = self._create(model, "cpu", "int8")
 
+    def vote_languages(self, samples: np.ndarray, windows: int = 12) -> list[tuple[str, float]]:
+        """Which languages are spoken in the WHOLE recording: the language is detected in up to 12 evenly
+        spaced 30 s windows and the probabilities are averaged. [(language, share)] best first.
+        (Detecting only the first 30 s of a part, or every window on its own, wrote English speech as
+        Turkish text whenever one window sounded Turkish.)"""
+        sr, win = 16000, 30 * 16000
+        n = len(samples)
+        starts = [0] if n <= win else sorted({int(x) for x in np.linspace(0, n - win, min(windows, max(1, n // win)))})
+        total: dict[str, float] = {}
+        used = 0
+        for a in starts:
+            chunk = samples[a:a + win]
+            if float(np.sqrt(np.mean(chunk.astype(np.float64) ** 2))) < 0.005:  # silence says nothing about the language
+                continue
+            with self._lock:
+                _, _, probs = self._model.detect_language(chunk, vad_filter=True)
+            for lang, p in probs:
+                total[lang] = total.get(lang, 0.0) + float(p)
+            used += 1
+        if not used:
+            return []
+        return sorted(((l, v / used) for l, v in total.items()), key=lambda t: -t[1])[:3]
+
+    def _decode(self, audio: np.ndarray, language: str | None, offset: float = 0.0) -> tuple[list[Word], str]:
+        segs, info = self._model.transcribe(audio, language=language, word_timestamps=True, vad_filter=True,
+                                            condition_on_previous_text=False)
+        words = [Word(w.start + offset, w.end + offset, w.word, float(w.probability))
+                 for seg in segs for w in (seg.words or [])]
+        return words, info.language
+
     def transcribe(self, samples: np.ndarray, duration: float,
                    progress: Callable[[float], None]) -> tuple[list[Word], str]:
         from .. import asr
 
         mode = asr.language_mode()
-        # auto: one language per part; mixed: the language is detected for every 30 s window, so a
-        # sentence in English inside a Turkish meeting is written in English (and the other way round)
+        voted = asr.recording_languages()  # [(language, share)] for this recording, best first
+        main = voted[0][0] if voted else None
+        if mode == "mixed" and len([1 for _, share in voted if share >= 0.15]) > 1:
+            return self._transcribe_mixed(samples, duration, progress, voted)
+        # a fixed language, or the language of the recording as a whole: the speech is written, never translated
+        language = mode if mode not in ("auto", "mixed") else main
         segs, info = self._model.transcribe(
-            samples, language=mode if mode not in ("auto", "mixed") else None, multilingual=(mode == "mixed"),
-            word_timestamps=True, vad_filter=True, condition_on_previous_text=False,
+            samples, language=language, word_timestamps=True, vad_filter=True, condition_on_previous_text=False,
         )
         words: list[Word] = []
         for seg in segs:
             for w in seg.words or []:
-                words.append(Word(w.start, w.end, w.word))
+                words.append(Word(w.start, w.end, w.word, float(w.probability)))
             progress(min(seg.end / duration, 1.0))
-        return words, info.language
+        return words, language or info.language
+
+    def _transcribe_mixed(self, samples, duration, progress, voted):
+        """Two languages in one meeting: every ~25 s window is written in each language that is really
+        spoken in the recording and the version the model is more sure about wins. A language the
+        recording does not contain is never tried, so English speech cannot come out as Turkish text."""
+        from ..chunking import speech_regions
+
+        cands = [l for l, share in voted if share >= 0.15][:2] or [voted[0][0]]
+        sr = 16000
+        wins, cur = [], None
+        for a, b in speech_regions(samples) or [(0.0, len(samples) / sr)]:
+            if cur and b - cur[0] <= 25.0:
+                cur[1] = b
+            else:
+                cur = [a, b]
+                wins.append(cur)
+        words: list[Word] = []
+        count: dict[str, float] = {}
+        for k, (a, b) in enumerate(wins):
+            a0, b0 = max(0.0, a - 0.3), min(len(samples) / sr, b + 0.3)
+            chunk = samples[int(a0 * sr):int(b0 * sr)]
+            best, best_score, best_lang = [], -1.0, cands[0]
+            for lang in cands:
+                ws, _ = self._decode(chunk, lang, a0)
+                tot = sum(max(w.end - w.start, 0.01) for w in ws)
+                score = sum(max(w.end - w.start, 0.01) * w.prob for w in ws) / tot if tot else 0.0
+                if score > best_score + (0.02 if lang != cands[0] else 0.0):  # ties keep the main language
+                    best, best_score, best_lang = ws, score, lang
+            words += best
+            count[best_lang] = count.get(best_lang, 0.0) + (b - a)
+            progress(min(b / duration, 1.0))
+        return words, max(count, key=count.get) if count else cands[0]
