@@ -98,7 +98,7 @@ def build_segments(
                 "words": s["words"],  # [start, end, text, probability] - used to time a split precisely
                 # text confidence: time-weighted mean word probability, and how many words were doubtful
                 **({"conf": round(sum(d * p for d, p in probs) / tot, 3) if tot > 0 else 1.0,
-                    "low_words": sum(1 for w in s["words"] if len(w) > 3 and w[3] < 0.4 and len(w[2].strip()) > 3)} if probs else {}),
+                    "low_words": sum(1 for w in s["words"] if len(w) > 3 and w[3] < 0.25 and len(w[2].strip()) > 3)} if probs else {}),
                 # speaker confidence: the smallest margin in the line (small or negative = another voice was as close)
                 **({"spk_conf": round(min(s["margins"]), 3)} if s["margins"] else {}),
             }

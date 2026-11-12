@@ -288,23 +288,49 @@ async function detectNames() {
 }
 
 /* ================= lines ================= */
-/* ---- lines to check: the speech model's word confidence and how sure the speaker decision was ---- */
-const RV = { shortLow: 0.2, wordLow: 0.4, wordMid: 0.7, lineLow: 0.5, lineMid: 0.75, spkLow: 0.0, spkMid: 0.05 };
+/* ---- lines to check: the speech model's word confidence and how sure the speaker decision was ----
+   Red must be rare and worth a look: the model is often unsure about ordinary words that are right, so common and
+   short words are almost never marked; names and unusual words are judged more strictly. */
+const RV = { shortRed: 0.05, wordRed: 0.2, wordYellow: 0.45, nameRed: 0.3, nameYellow: 0.6,
+             lineRed: 0.55, lineYellow: 0.78, spkRed: -0.05, spkYellow: 0.0 };
+const COMMON = new Set(("the and that this with have from they will would there their what about which when your said each she how out other many then them these some her " +
+  "would make like him into time has look two more write see number way could people than first water been call who its now find long down day did get come made may part " +
+  "yes yeah okay well just very also really thank thanks please hello right sure good great nice fine point since because think know want going here where over after before " +
+  "bir bu şu ve ama için gibi çok daha evet hayır tamam peki şimdi sonra önce zaten yani işte belki hiç kadar çünkü ancak fakat veya ile değil var yok").split(" "));
 let reviewOnly = false;
 const segOf = (row) => job.segments.find((x) => "seg" + x.id === row.id);
+/* 0 fine | 1 yellow (check) | 2 red (probably wrong); sentStart: capitalised words at a sentence start are not names */
+function wordLevel(tx, p, sentStart) {
+  const w = tx.trim().replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "");
+  if (!w || typeof p !== "number") return 0;
+  if (w.length <= 3 || COMMON.has(w.toLowerCase())) return p < RV.shortRed ? 2 : 0;
+  const name = !sentStart && /^\p{Lu}/u.test(w);
+  if (p < (name ? RV.nameRed : RV.wordRed)) return 2;
+  return p < (name ? RV.nameYellow : RV.wordYellow) ? 1 : 0;
+}
+function* wordLevels(s) {  // [index, level] for every word with its own mark
+  let start = true;
+  for (let i = 0; i < s.words.length; i++) {
+    const tx = s.words[i][2];
+    const lv = wordLevel(tx, s.words[i][3], start);
+    if (lv) yield [i, lv];
+    start = /[.!?…]\s*$/.test(tx);
+  }
+}
 /* -> { level: 0 none | 1 medium (yellow) | 2 low (red), reasons: [..] }; a line the user edited is no longer in doubt */
 function reviewOf(s) {
   const reasons = [];
   let level = 0;
   const edited = s.text_original && s.text_edited !== s.text_original;
-  if (!edited && typeof s.conf === "number") {
-    const lw = s.low_words || 0;
-    if (s.conf < RV.lineLow || lw >= 3) { level = 2; reasons.push(t("rv_text")); }
-    else if (s.conf < RV.lineMid || lw >= 1) { level = Math.max(level, 1); reasons.push(t("rv_text")); }
+  if (!edited && s.words?.length && typeof s.words[0][3] === "number") {
+    let red = 0, yellow = 0;
+    for (const [, lv] of wordLevels(s)) lv === 2 ? red++ : yellow++;
+    if ((typeof s.conf === "number" && s.conf < RV.lineRed) || red >= 2) { level = 2; reasons.push(t("rv_text")); }
+    else if ((typeof s.conf === "number" && s.conf < RV.lineYellow) || red >= 1 || yellow >= 2) { level = 1; reasons.push(t("rv_text")); }
   }
   if (typeof s.spk_conf === "number") {
-    if (s.spk_conf < RV.spkLow) { level = 2; reasons.push(t("rv_spk")); }
-    else if (s.spk_conf < RV.spkMid) { level = Math.max(level, 1); reasons.push(t("rv_spk")); }
+    if (s.spk_conf < RV.spkRed) { level = 2; reasons.push(t("rv_spk")); }
+    else if (s.spk_conf < RV.spkYellow) { level = Math.max(level, 1); reasons.push(t("rv_spk")); }
   }
   return { level, reasons };
 }
@@ -317,19 +343,16 @@ function paintConfidence() {  // word level: coloured ranges inside the unedited
     const node = row.querySelector(".txt")?.firstChild;
     if (!node || node.nodeType !== 3 || node.textContent !== s.text_original) continue;
     const raw = s.words.map((w) => w[2]).join(""), lead = raw.length - raw.trimStart().length;
+    const starts = [];
     let pos = 0;
-    for (const w of s.words) {
-      const tx = w[2], p = w[3];
-      const short = tx.trim().length <= 3;  // "a", "and", "we": the model is often unsure about them and it hardly matters
-      const lowT = short ? RV.shortLow : RV.wordLow, midT = short ? RV.shortLow : RV.wordMid;
-      if (typeof p === "number" && p < midT) {
-        const a = pos - lead + (tx.length - tx.trimStart().length), b = pos - lead + tx.length;
-        if (a >= 0 && b <= node.length && b > a) {
-          const r = new Range(); r.setStart(node, a); r.setEnd(node, b);
-          (p < lowT ? low : mid).push(r);
-        }
+    for (const w of s.words) { starts.push(pos); pos += w[2].length; }
+    for (const [i, lv] of wordLevels(s)) {
+      const tx = s.words[i][2];
+      const a = starts[i] - lead + (tx.length - tx.trimStart().length), b = starts[i] - lead + tx.length;
+      if (a >= 0 && b <= node.length && b > a) {
+        const r = new Range(); r.setStart(node, a); r.setEnd(node, b);
+        (lv === 2 ? low : mid).push(r);
       }
-      pos += tx.length;
     }
   }
   CSS.highlights.set("lc-low", new Highlight(...low));
