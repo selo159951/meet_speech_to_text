@@ -17,3 +17,26 @@ dist/
 
 # whisper.cpp Vulkan runtime (tools/build_whispercpp.ps1)
 vendor/
+
+# Recordings and meeting data never go into the repository.
+# The only audio file here is the synthetic speed-test sample (Windows text-to-speech).
+*.wav
+*.mp3
+*.m4a
+*.aac
+*.flac
+*.ogg
+*.opus
+*.wma
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.webm
+!assets/speedtest.wav
+jobs/
+people/
+glossary.json
+benchmarks.json
+settings.json
+*.gguf
