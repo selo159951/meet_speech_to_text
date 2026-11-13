@@ -97,7 +97,7 @@ def _run(job_id: str, src: Path | None, resume: bool, t_start: float) -> None:
 def _parallel_enabled() -> bool:
     import os
 
-    return os.environ.get("MEETTRANSCRIBER_SEQUENTIAL") != "1"
+    return (os.environ.get("SESDEFTERI_SEQUENTIAL") or os.environ.get("MEETTRANSCRIBER_SEQUENTIAL")) != "1"
 
 
 def _transcribe_and_finish(job_id, jp, job, samples, duration, parts, device, parallel,

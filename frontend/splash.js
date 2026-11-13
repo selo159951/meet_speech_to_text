@@ -3,8 +3,8 @@
 (() => {
   const MIN_MS = 1100;
   const T = {
-    tr: { tag: "Toplantı kâtibi", boot: "Başlatılıyor…", bridge: "Uygulama bağlanıyor…", settings: "Ayarlar yükleniyor…", ready: "Hazır" },
-    en: { tag: "Meeting scribe", boot: "Starting…", bridge: "Connecting…", settings: "Loading settings…", ready: "Ready" },
+    tr: { tag: "Toplantıların yazılı hâli", boot: "Başlatılıyor…", bridge: "Uygulama bağlanıyor…", settings: "Ayarlar yükleniyor…", ready: "Hazır" },
+    en: { tag: "Your meetings, written down", boot: "Starting…", bridge: "Connecting…", settings: "Loading settings…", ready: "Ready" },
   };
   const lang = (navigator.language || "tr").toLowerCase().startsWith("tr") ? "tr" : "en";
   const root = document.getElementById("splash");

@@ -18,9 +18,9 @@ LIST_OUT = ("Available devices:\n"
 
 @pytest.fixture(autouse=True)
 def home(tmp_path, monkeypatch):
-    monkeypatch.setenv("MEETTRANSCRIBER_HOME", str(tmp_path))
-    monkeypatch.setenv("KATIP_LLM_DIR", str(tmp_path / "llm"))
-    monkeypatch.setenv("KATIP_LLAMACPP_DIR", str(tmp_path / "bin"))
+    monkeypatch.setenv("SESDEFTERI_HOME", str(tmp_path))
+    monkeypatch.setenv("SESDEFTERI_LLM_DIR", str(tmp_path / "llm"))
+    monkeypatch.setenv("SESDEFTERI_LLAMACPP_DIR", str(tmp_path / "bin"))
     monkeypatch.setattr(llm, "_devices_cache", None)
 
 

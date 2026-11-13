@@ -95,6 +95,6 @@ When the LLM is not ready the job simply has no analysis; the UI shows "download
 
 ## 5. Rules for everyone
 - New UI strings go into `frontend/i18n.js` in both `tr` and `en`.
-- Tests never touch `%APPDATA%`; use the `MEETTRANSCRIBER_HOME` temp-dir fixture in `tests/`.
+- Tests never touch `%APPDATA%`; use the `SESDEFTERI_HOME` temp-dir fixture in `tests/`.
 - No real meeting text in tests or prompts sent anywhere: use `tests/data/meeting_tr.txt` (fictional).
 - No new network listeners. No git push.

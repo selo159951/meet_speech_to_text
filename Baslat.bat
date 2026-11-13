@@ -1,12 +1,12 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-title Katip
+title Ses Defteri
 
 if exist ".venv\Scripts\pythonw.exe" goto run
 
 echo ================================================
-echo  Katip - ilk kurulum (bir kez)
+echo  Ses Defteri - ilk kurulum (bir kez)
 echo ================================================
 where py >nul 2>&1 || (
   echo Python bulunamadi. Lutfen https://www.python.org/downloads/ adresinden

@@ -13,7 +13,7 @@ TERMS = ["Koray Ersu", "İvedik", "Teknopark"]
 
 @pytest.fixture(autouse=True)
 def home(tmp_path, monkeypatch):
-    monkeypatch.setenv("MEETTRANSCRIBER_HOME", str(tmp_path))
+    monkeypatch.setenv("SESDEFTERI_HOME", str(tmp_path))
 
 
 def W(text, prob=1.0, start=0.0, end=0.5):

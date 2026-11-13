@@ -14,34 +14,58 @@ _lock = threading.RLock()  # re-entrant: update_job holds it across read + write
 _log = logging.getLogger(__name__)
 
 
+APP_DIR = "SesDefteri"
+# the older names still work, so existing scripts and data keep working
+HOME_ENVS = ("SESDEFTERI_HOME", "KATIP_HOME", "MEETTRANSCRIBER_HOME")
+
+
+def _home_override() -> str | None:
+    return next((os.environ[k] for k in HOME_ENVS if os.environ.get(k)), None)
+
+
 def data_dir() -> Path:
-    override = os.environ.get("KATIP_HOME") or os.environ.get("MEETTRANSCRIBER_HOME")
-    if override:  # MEETTRANSCRIBER_HOME is kept so existing tests and scripts work
+    override = _home_override()
+    if override:
         base = Path(override)
     elif os.name == "nt":
-        base = Path(os.environ.get("APPDATA", Path.home())) / "Katip"
+        base = Path(os.environ.get("APPDATA", Path.home())) / APP_DIR
     else:
-        base = Path.home() / ".local" / "share" / "Katip"
+        base = Path.home() / ".local" / "share" / APP_DIR
     base.mkdir(parents=True, exist_ok=True)
     return base
 
 
 def migrate_old_data() -> bool:
-    """Copy %APPDATA%\\MeetTranscriber to %APPDATA%\\Katip once (old folder untouched)."""
-    if os.environ.get("KATIP_HOME") or os.environ.get("MEETTRANSCRIBER_HOME"):
+    """Bring the data of an earlier version over once.
+    %APPDATA%\\Katip (the previous name) is renamed: instant, and the models in it are several GB.
+    If that folder is in use, or only the oldest %APPDATA%\\MeetTranscriber exists, it is copied
+    instead and the old folder is left as it was."""
+    if _home_override():
         return False
     appdata = Path(os.environ.get("APPDATA", Path.home()))
-    new, old, tmp = appdata / "Katip", appdata / "MeetTranscriber", appdata / "Katip.tmp"
-    if new.exists() or not old.exists():
+    new, tmp = appdata / APP_DIR, appdata / (APP_DIR + ".tmp")
+    if new.exists():
+        return False
+    katip, oldest = appdata / "Katip", appdata / "MeetTranscriber"
+    if katip.exists():
+        try:
+            katip.rename(new)
+            return True
+        except OSError:
+            _log.exception("could not rename the Katip data folder, copying it instead")
+        src = katip
+    elif oldest.exists():
+        src = oldest
+    else:
         return False
     try:
         if tmp.exists():  # leftover from an interrupted copy
             shutil.rmtree(tmp)
-        shutil.copytree(old, tmp, ignore=shutil.ignore_patterns("webview"))
+        shutil.copytree(src, tmp, ignore=shutil.ignore_patterns("webview"))
         tmp.rename(new)
         return True
     except Exception:
-        _log.exception("could not copy the old MeetTranscriber data folder")
+        _log.exception("could not copy the old data folder %s", src)
         return False
 
 

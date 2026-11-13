@@ -1,9 +1,9 @@
-"""Kâtip - desktop app (no web server, no open ports)."""
+"""Ses Defteri - desktop app (no web server, no open ports)."""
 import sys
 
 from backend import store
 
-# One-time: copy an existing %APPDATA%\MeetTranscriber folder to %APPDATA%\Katip.
+# One-time: bring an earlier version's data folder (%APPDATA%\Katip or MeetTranscriber) over to %APPDATA%\SesDefteri.
 # Runs before data_dir() is used (also before the log file is opened below).
 store.migrate_old_data()
 
@@ -19,7 +19,7 @@ def _fatal(msg: str) -> None:
     if sys.platform == "win32":
         import ctypes
 
-        ctypes.windll.user32.MessageBoxW(None, msg, "Kâtip", 0x10)
+        ctypes.windll.user32.MessageBoxW(None, msg, "Ses Defteri", 0x10)
 
 
 def main():
@@ -36,7 +36,7 @@ def main():
         install_virtual_hosts()
     api = Api()
     # starts maximized; the size below is what "restore down" gives
-    window = webview.create_window("Kâtip", START_URL, width=1180, height=820,
+    window = webview.create_window("Ses Defteri", START_URL, width=1180, height=820,
                                    min_size=(720, 560), maximized=True, js_api=api)
     api._get_window = lambda: window
     attached = []

@@ -4,8 +4,8 @@ No port is opened. pywebview would normally start a local HTTP server for local
 files; instead we map two virtual host names to folders inside WebView2
 (SetVirtualHostNameToFolderMapping), which only this window can resolve:
 
-  https://app.meettranscriber/    -> frontend/      (the UI)
-  https://media.meettranscriber/  -> data/jobs/     (each recording's audio.mp3)
+  https://app.sesdefteri/    -> frontend/      (the UI)
+  https://media.sesdefteri/  -> data/jobs/     (each recording's audio.mp3)
 """
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ from pathlib import Path
 
 from . import store
 
-APP_HOST = "app.meettranscriber"
-MEDIA_HOST = "media.meettranscriber"
+APP_HOST = "app.sesdefteri"
+MEDIA_HOST = "media.sesdefteri"
 START_URL = f"https://{APP_HOST}/index.html"
 
 

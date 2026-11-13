@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kâtip</title>
+<title>Ses Defteri</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="splash" role="status" aria-live="polite">
   <div class="sbox">
-    <div class="slogo">Kâtip</div>
+    <div class="slogo">Ses Defteri</div>
     <div class="stag"></div>
     <div class="sbar"><div class="sfill"></div></div>
     <div class="srow"><span class="smsg"></span><span class="spct">0%</span></div>
@@ -17,7 +17,7 @@
 </div>
 <script src="splash.js"></script>
 <script src="icons.js"></script>
-<header><h1 data-i18n="app">Kâtip</h1><button id="homeBtn" hidden data-icon="arrow-left" data-i18n="all_recordings"></button>
+<header><h1 data-i18n="app">Ses Defteri</h1><button id="homeBtn" hidden data-icon="arrow-left" data-i18n="all_recordings"></button>
   <span class="spacer"></span>
   <button id="peopleBtn" data-i18n="people"></button>
   <select id="langSel"data-i18n-title="language"><option value="tr">TR</option><option value="en">EN</option></select>
@@ -129,7 +129,7 @@
   <button id="pp" class="icon" data-icon="play"></button>
   <button id="back">−5s</button><button id="fwd">+5s</button>
   <span id="clock">00:00:00</span>
-  <select id="speed"><option>0.75</option><option selected>1</option><option>1.25</option><option>1.5</option></select>×
+  <select id="speed"><option value="0.75">0.75x</option><option value="1" selected>1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option></select>
   <span id="saved"></span>
 </footer>
 <div id="selPop" hidden></div>

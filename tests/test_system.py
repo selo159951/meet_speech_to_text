@@ -12,7 +12,7 @@ GB = 1024 ** 3
 
 @pytest.fixture(autouse=True)
 def home(tmp_path, monkeypatch):
-    monkeypatch.setenv("MEETTRANSCRIBER_HOME", str(tmp_path))
+    monkeypatch.setenv("SESDEFTERI_HOME", str(tmp_path))
 
 
 def hw(*gpus, vulkan=True, cores=8, ram=16):

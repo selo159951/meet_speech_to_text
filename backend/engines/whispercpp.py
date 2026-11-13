@@ -141,7 +141,7 @@ def model_file_name(model: str, vram_gb: float | None) -> str:
 def download_model(name: str, dest: Path, progress: Callable[[float], None] | None = None) -> None:
     url = HF_URL.format(name=name)
     tmp = dest.with_suffix(".part")
-    req = urllib.request.Request(url, headers={"User-Agent": "MeetTranscriber"})
+    req = urllib.request.Request(url, headers={"User-Agent": "SesDefteri"})
     try:
         with urllib.request.urlopen(req, timeout=60) as r, open(tmp, "wb") as f:
             total = int(r.headers.get("Content-Length") or 0)

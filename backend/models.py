@@ -19,12 +19,12 @@ MODELS = {
     "small": {"repo": "Systran/faster-whisper-small", "size": int(0.48 * GB),
               "vram": 1.4, "ram": 1.5, "quality": 1, "speed": 3},
 }
-DEFAULT = os.environ.get("MEETTRANSCRIBER_MODEL", "large-v3-turbo")
+DEFAULT = os.environ.get("SESDEFTERI_MODEL") or os.environ.get("MEETTRANSCRIBER_MODEL", "large-v3-turbo")
 
 
 def root() -> Path:
-    """Where Whisper models live (MEETTRANSCRIBER_MODEL_DIR overrides, e.g. for tests)."""
-    env = os.environ.get("MEETTRANSCRIBER_MODEL_DIR")
+    """Where Whisper models live (SESDEFTERI_MODEL_DIR, or the older MEETTRANSCRIBER_MODEL_DIR, overrides, e.g. for tests)."""
+    env = os.environ.get("SESDEFTERI_MODEL_DIR") or os.environ.get("MEETTRANSCRIBER_MODEL_DIR")
     return Path(env) if env else store.data_dir() / "models"
 
 

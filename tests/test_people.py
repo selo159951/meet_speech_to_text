@@ -14,7 +14,7 @@ SR = 16000
 
 @pytest.fixture(autouse=True)
 def home(tmp_path, monkeypatch):
-    monkeypatch.setenv("MEETTRANSCRIBER_HOME", str(tmp_path))
+    monkeypatch.setenv("SESDEFTERI_HOME", str(tmp_path))
     monkeypatch.setattr(people, "_lang", lambda: "en")
     monkeypatch.setattr(people, "_model_name", lambda: "fake")
     return tmp_path

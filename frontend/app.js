@@ -15,7 +15,7 @@ let undoStack = [], gpuState = null;
 const bridgeReady = new Promise((res) => (window.pywebview?.api ? res() : window.addEventListener("pywebviewready", res, { once: true })));
 bridgeReady.then(() => window.splash?.step(55, "bridge"));
 async function call(name, ...args) { await bridgeReady; return window.pywebview.api[name](...args); }
-const MEDIA = "https://media.meettranscriber";
+const MEDIA = "https://media.sesdefteri";
 
 /* Wrap every occurrence of q (folded) in <mark>, safely (no innerHTML). */
 function marked(text, q) {

@@ -30,7 +30,7 @@ class Cancelled(Exception):
 
 
 def binary_dir() -> Path:
-    env = os.environ.get("KATIP_LLAMACPP_DIR")
+    env = os.environ.get("SESDEFTERI_LLAMACPP_DIR") or os.environ.get("KATIP_LLAMACPP_DIR")
     if env:
         return Path(env)
     if getattr(sys, "frozen", False) and getattr(sys, "_MEIPASS", None):

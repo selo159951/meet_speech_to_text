@@ -35,6 +35,6 @@ a = Analysis(
     excludes=["nvidia", "tkinter", "matplotlib", "pytest", "IPython"],
 )
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Katip",
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="SesDefteri",
           console=False, icon=None)
-coll = COLLECT(exe, a.binaries, a.datas, name="Katip")
+coll = COLLECT(exe, a.binaries, a.datas, name="SesDefteri")

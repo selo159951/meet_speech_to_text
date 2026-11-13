@@ -13,7 +13,7 @@ from backend.merge import Turn, Word, build_segments  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def home(tmp_path, monkeypatch):
-    monkeypatch.setenv("MEETTRANSCRIBER_HOME", str(tmp_path))
+    monkeypatch.setenv("SESDEFTERI_HOME", str(tmp_path))
 
 
 def W(s, e, t):

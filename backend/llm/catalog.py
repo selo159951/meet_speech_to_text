@@ -40,7 +40,7 @@ def get(name: str) -> dict | None:
 
 
 def model_dir() -> Path:
-    env = os.environ.get("KATIP_LLM_DIR")
+    env = os.environ.get("SESDEFTERI_LLM_DIR") or os.environ.get("KATIP_LLM_DIR")
     return Path(env) if env else models.root() / "llm"
 
 
@@ -142,7 +142,7 @@ def _download(m: dict) -> None:
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
         have = part.stat().st_size if part.is_file() else 0
-        headers = {"User-Agent": "MeetTranscriber"}
+        headers = {"User-Agent": "SesDefteri"}
         if have:
             headers["Range"] = f"bytes={have}-"
         req = urllib.request.Request(m["url"], headers=headers)

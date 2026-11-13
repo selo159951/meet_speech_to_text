@@ -1,4 +1,6 @@
-# Kâtip: toplantı modu raporu (10–11 Kasım 2026)
+# Ses Defteri (eski adıyla Kâtip): toplantı modu raporu (10–11 Kasım 2026)
+
+> 13 Kasım'da uygulamanın adı **Ses Defteri** oldu (`SesDefteri.exe`, veriler `%APPDATA%\SesDefteri`). Aşağıdaki bölümler o tarihten önce yazıldığı için eski adı kullanır.
 
 ## Ne yapıldı
 - **Program adı Kâtip oldu.** `Katip.exe`, `Katip.zip`, `Katip-NVIDIA.zip`. Veriler `%APPDATA%\Katip`'te; eski `%APPDATA%\MeetTranscriber` klasörü ilk açılışta **kopyalanır**, eskisine dokunulmaz.
